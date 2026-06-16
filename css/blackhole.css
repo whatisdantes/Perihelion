@@ -1,0 +1,150 @@
+/* ============================================================
+   Гаргантюа — стили страницы чёрной дыры
+   ============================================================ */
+
+.back-link {
+  display: flex; align-items: center; gap: 8px;
+  height: 40px;
+  padding: 0 16px 0 12px;
+  border-radius: 12px;
+  font-size: 12px; font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.25s, box-shadow 0.25s;
+  white-space: nowrap;
+}
+.back-link svg { width: 16px; height: 16px; }
+.back-link:hover {
+  border-color: rgba(255, 180, 90, 0.45);
+  box-shadow: 0 0 18px rgba(255, 150, 60, 0.25);
+}
+
+/* акцент страницы — тёплый, под цвет диска */
+.bh-portrait {
+  width: 62px; height: 62px; flex: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, #000 0 38%, transparent 39%),
+    radial-gradient(circle at 50% 50%, rgba(255, 240, 210, 0.95) 36%, rgba(255, 150, 60, 0.85) 48%, rgba(120, 50, 20, 0.4) 62%, transparent 72%);
+  box-shadow: 0 0 26px rgba(255, 150, 60, 0.35);
+}
+#infoPanel .struct { padding: 12px 0 4px; border-bottom: 1px solid rgba(138, 170, 255, 0.12); }
+.struct-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 6px 0;
+  font-size: 12.5px; line-height: 1.5;
+  color: #c6d4ec;
+}
+.struct-row b { color: #e8f0ff; }
+.struct-row i {
+  flex: none;
+  width: 10px; height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--c);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 8px var(--c);
+}
+
+.bar-label {
+  font-size: 11.5px; font-weight: 700;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* панель червоточины — зеркало #infoPanel */
+#wormPanel {
+  position: fixed; right: 14px; top: 72px;
+  width: 348px;
+  max-height: calc(100vh - 186px);
+  border-radius: 20px;
+  display: flex; flex-direction: column;
+  z-index: 21;
+  transform: translateX(120%);
+  opacity: 0;
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.35s;
+  overflow: hidden;
+}
+#wormPanel.open { transform: translateX(0); opacity: 1; }
+#wormClose {
+  position: absolute; top: 12px; right: 12px;
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  display: grid; place-items: center;
+  color: var(--text-dim);
+  font-size: 17px;
+  transition: background 0.2s, color 0.2s;
+}
+#wormClose:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+#wormPanel .wkind {
+  display: inline-block;
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: #a5c4ff;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid rgba(120, 170, 255, 0.35);
+  background: rgba(91, 157, 255, 0.1);
+  margin-bottom: 5px;
+}
+#wormPanel .wname { font-size: 21px; font-weight: 800; line-height: 1.1; }
+#wormPanel .wen { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+#wormPanel .wdesc {
+  font-size: 13px; line-height: 1.6;
+  color: #c6d4ec;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(138, 170, 255, 0.12);
+}
+#wormPanel .wfacts { padding-top: 6px; }
+.worm-portrait {
+  width: 62px; height: 62px; flex: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 34%, rgba(255, 255, 255, 0.85) 0 6%, transparent 7%),
+    radial-gradient(circle at 50% 50%, #0a1430 0 30%, rgba(120, 170, 255, 0.5) 44%, rgba(170, 210, 255, 0.95) 52%, rgba(80, 120, 220, 0.25) 64%, transparent 74%);
+  box-shadow: 0 0 26px rgba(130, 180, 255, 0.45);
+}
+@media (max-width: 640px) {
+  #wormPanel { width: auto; left: 14px; right: 14px; top: auto; bottom: 86px; max-height: 48vh; }
+}
+
+#qualitySelect {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 11.5px; font-weight: 700;
+  outline: none;
+  cursor: pointer;
+}
+#qualitySelect:hover { border-color: rgba(140, 190, 255, 0.4); }
+#qualitySelect option { background: #0d1324; }
+
+/* загрузчик: вращающееся «фотонное кольцо» */
+.bh-spinner {
+  width: 110px; height: 110px;
+  position: relative;
+  transform: translateZ(0);
+}
+.bh-ring {
+  position: absolute; inset: 8px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: #ffd9a0;
+  border-right-color: rgba(255, 150, 60, 0.6);
+  animation: spin 1.3s linear infinite;
+  box-shadow: 0 0 24px rgba(255, 160, 60, 0.35), inset 0 0 24px rgba(255, 160, 60, 0.2);
+}
+.bh-core {
+  position: absolute; inset: 34px;
+  border-radius: 50%;
+  background: #000;
+  box-shadow: 0 0 0 2px rgba(255, 220, 170, 0.55), 0 0 30px rgba(255, 170, 80, 0.45);
+}
+
+@media (max-width: 640px) {
+  .bar-label { display: none; }
+  #infoPanel { width: auto; left: 14px; right: 14px; top: auto; bottom: 86px; max-height: 48vh; }
+}

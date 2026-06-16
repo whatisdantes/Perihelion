@@ -1,0 +1,8 @@
+# OS cruft
+Thumbs.db
+ehthumbs.db
+.DS_Store
+desktop.ini
+
+# Local-only Claude settings (keep launch.json — it's the dev-server config)
+.claude/settings.local.json

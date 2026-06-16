@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Гаргантюа — чёрная дыра из «Интерстеллара» | 3D-модель</title>
+  <meta name="description" content="Физически достоверная 3D-модель чёрной дыры Гаргантюа: горизонт событий, аккреционный диск, гравитационное линзирование, эффект Доплера.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/blackhole.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='5' fill='%23000'/><circle cx='12' cy='12' r='6.5' fill='none' stroke='%23ffb347' stroke-width='1.6'/><ellipse cx='12' cy='12' rx='11' ry='2.6' fill='none' stroke='%23ff8a3c' stroke-width='1.4'/></svg>">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js",
+        "three/addons/": "./vendor/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <!-- Экран загрузки -->
+  <div id="loader">
+    <div class="bh-spinner">
+      <div class="bh-ring"></div>
+      <div class="bh-core"></div>
+    </div>
+    <div class="loader-title">ГАРГАНТЮА</div>
+    <div class="loader-sub">интегрируем геодезические в искривлённом пространстве-времени…</div>
+  </div>
+
+  <canvas id="scene"></canvas>
+  <div id="labels">
+    <div class="label kind-wormhole" id="wormLabel" style="display:none">
+      <span class="ldot" style="--c:#9fd4ff"></span><span>Червоточина</span>
+    </div>
+  </div>
+
+  <!-- Верхняя панель -->
+  <header id="topbar">
+    <a class="back-link glass" href="index.html" title="Вернуться к Солнечной системе">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 5l-7 7 7 7"/>
+      </svg>
+      Солнечная система
+    </a>
+    <div class="brand glass">
+      <b>ГАРГАНТЮА</b>
+      <span>чёрная дыра · «интерстеллар»</span>
+    </div>
+    <div class="spacer"></div>
+    <button id="btnInfo" class="glass btn-ic" title="Об объекте">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9.2"/>
+        <path d="M12 11v6"/>
+        <circle cx="12" cy="7.6" r="0.6" fill="currentColor"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Панель информации -->
+  <section id="infoPanel" class="glass open">
+    <button id="infoClose" title="Закрыть (Esc)">✕</button>
+    <div class="info-head">
+      <div id="infoPortrait" class="bh-portrait"></div>
+      <div class="info-names">
+        <div id="infoKind">Сверхмассивная чёрная дыра</div>
+        <div id="infoName">Гаргантюа</div>
+        <div id="infoEn">Gargantua · Interstellar (2014)</div>
+      </div>
+    </div>
+    <div class="info-body">
+      <p id="infoDesc">
+        Вращающаяся сверхмассивная чёрная дыра из фильма Кристофера Нолана.
+        Её облик рассчитал по уравнениям ОТО физик Кип Торн с командой Double
+        Negative — и эта модель построена тем же способом: каждый кадр лучи
+        света честно изгибаются гравитацией, поэтому арки над и под тенью —
+        не рисунок, а изображение дальней стороны диска.
+      </p>
+      <div class="struct">
+        <div class="struct-row"><i style="--c:#1a1a2a"></i><div><b>Сингулярность</b> — точка бесконечной кривизны внутри; снаружи ненаблюдаема, у вращающейся дыры имеет форму кольца.</div></div>
+        <div class="struct-row"><i style="--c:#000"></i><div><b>Горизонт событий</b> — чёрный «силуэт» в центре: граница, из-за которой не выходит даже свет.</div></div>
+        <div class="struct-row"><i style="--c:#fff3d0"></i><div><b>Фотонное кольцо</b> — тонкий яркий ободок у самой тени: свет, обернувшийся вокруг дыры.</div></div>
+        <div class="struct-row"><i style="--c:#ffb35c"></i><div><b>Аккреционный диск</b> — раскалённый газ на орбите; из-за линзирования виден одновременно сверху, снизу и сбоку.</div></div>
+        <div class="struct-row"><i style="--c:#7fb4ff"></i><div><b>Эффект Доплера</b> — край диска, летящий к нам, ярче и белее; уходящий — тусклее и краснее.</div></div>
+        <div class="struct-row"><i style="--c:#9b7bff"></i><div><b>Джеты</b> — у Гаргантюа их <b>нет</b>: по Торну это «спокойная» дыра с холодным диском. Тумблер внизу включает гипотетические джеты.</div></div>
+      </div>
+      <div id="infoFacts">
+        <div class="fact"><span>Масса</span><b>100 млн масс Солнца</b></div>
+        <div class="fact"><span>Радиус горизонта</span><b>≈ 1 а.е. (орбита Земли)</b></div>
+        <div class="fact"><span>Вращение</span><b>99,8 % предельного</b></div>
+        <div class="fact"><span>Замедление времени</span><b>1 ч на планете Миллер = 7 лет</b></div>
+        <div class="fact"><span>Научный консультант</span><b>Кип Торн, нобелевский лауреат</b></div>
+        <div class="fact"><span>Метод рендера</span><b>трассировка нулевых геодезических</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Панель червоточины -->
+  <section id="wormPanel" class="glass">
+    <button id="wormClose" title="Закрыть (Esc)">✕</button>
+    <div class="info-head">
+      <div class="worm-portrait"></div>
+      <div class="info-names">
+        <div class="wkind">Пространственно-временной тоннель</div>
+        <div class="wname">Червоточина</div>
+        <div class="wen">The Wormhole · обратная сторона</div>
+      </div>
+    </div>
+    <div class="info-body">
+      <p class="wdesc">
+        Выход тоннеля со стороны Гаргантюа. Сквозь сферу просвечивает
+        родное небо: жёлтая искра в ней — наше Солнце. Прыжок ведёт обратно,
+        к Сатурну, у орбиты которого висит вход.
+      </p>
+      <div class="wfacts">
+        <div class="fact"><span>Тип</span><b>проходимая червоточина Морриса–Торна</b></div>
+        <div class="fact"><span>Эта сторона</span><b>система Гаргантюа, другая галактика</b></div>
+        <div class="fact"><span>Ведёт</span><b>к орбите Сатурна, домой</b></div>
+        <div class="fact"><span>Форма</span><b>сфера — не «дыра» и не воронка</b></div>
+        <div class="fact"><span>Стабильность</span><b>требует экзотической материи</b></div>
+      </div>
+    </div>
+    <div class="info-foot">
+      <button id="btnJumpHome" class="btn-jump">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="7.5"/>
+          <path d="M15.5 12h-7M11.3 9.2L8.5 12l2.8 2.8"/>
+        </svg>
+        Прыгнуть домой
+      </button>
+    </div>
+  </section>
+
+  <!-- Панель управления -->
+  <footer id="timebar" class="glass">
+    <div class="slider-wrap">
+      <span class="bar-label">Скорость диска</span>
+      <input id="speedSlider" type="range" min="0" max="300" value="100">
+      <div id="speedLabel">×1.0</div>
+    </div>
+    <div class="vdiv"></div>
+    <button id="tglDoppler" class="tgl on">Доплер</button>
+    <button id="tglPlanet" class="tgl on">Планета Миллер</button>
+    <button id="tglJets" class="tgl" title="В фильме у Гаргантюа джетов нет">Джеты</button>
+    <div class="vdiv"></div>
+    <select id="qualitySelect" title="Качество рендера">
+      <option value="auto" selected>Авто</option>
+      <option value="high">Высокое</option>
+      <option value="medium">Среднее</option>
+      <option value="low">Низкое</option>
+    </select>
+  </footer>
+
+  <!-- Подсказка -->
+  <div id="hint" class="glass">
+    <kbd>ЛКМ</kbd> облёт вокруг дыры &nbsp; <kbd>Колесо</kbd> приближение<br>
+    Наклоните камеру к плоскости диска — увидите арки линзирования, как в фильме
+  </div>
+
+  <script type="module" src="js/blackhole.js"></script>
+</body>
+</html>
