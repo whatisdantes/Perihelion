@@ -1762,7 +1762,8 @@ let popFx = null;              // вспышка по завершении: { id
 
 const scanFwd = new THREE.Vector3();
 const scanTo = new THREE.Vector3();
-function scanRangeOf(d) { return 35 + d.radius * 14; }
+// дальность скана: пропорциональна размеру тела + масштабный пол для мелких аппаратов
+function scanRangeOf(d) { return (REALISTIC ? 120 : 35) + d.radius * 16; }
 
 // цель ещё в поле зрения? (мягкий конус — чтобы скан не срывался от соседей)
 function targetValid(id) {
@@ -1847,7 +1848,7 @@ function updateScanFx() {
     const rec = bodies.get(sc.id);
     scanRing.visible = true;
     scanRing.position.copy(rec.group.position);
-    const base = Math.max(rec.data.radius * 4.5, 1.5);
+    const base = Math.max(rec.data.radius * 4.5, camera.position.distanceTo(rec.group.position) * 0.012, 1.5);
     scanRing.scale.setScalar(base * (1 + 0.12 * Math.sin(elapsed * 9)));
     scanRing.material.rotation = elapsed * 1.8;
     scanRing.material.opacity = 0.85;
@@ -1857,7 +1858,7 @@ function updateScanFx() {
     if (p >= 1) { popFx = null; scanRing.visible = false; } else {
       scanRing.visible = true;
       scanRing.position.copy(rec.group.position);
-      const base = Math.max(rec.data.radius * 4.5, 1.5);
+      const base = Math.max(rec.data.radius * 4.5, camera.position.distanceTo(rec.group.position) * 0.012, 1.5);
       scanRing.scale.setScalar(base * (1 + p * 1.8));
       scanRing.material.opacity = 0.9 * (1 - p);
       scanRing.material.rotation = elapsed * 1.8;
@@ -2041,7 +2042,10 @@ function animate() {
   if (state.selected && selRing.visible) {
     const rec = bodies.get(state.selected);
     selRing.position.copy(rec.group.position);
-    const base = Math.max(rec.data.radius * 5.4, 1.6);
+    // мин. размер ~постоянного экранного угла (dist*0.012) → кольцо видно и с обзора;
+    // вблизи берёт верх радиус тела и обнимает его
+    const dist = camera.position.distanceTo(rec.group.position);
+    const base = Math.max(rec.data.radius * 5.4, dist * 0.012, 1.6);
     selRing.scale.setScalar(base * (1 + Math.sin(elapsed * 2.4) * 0.06));
     selRing.material.rotation = elapsed * 0.35;
   }
