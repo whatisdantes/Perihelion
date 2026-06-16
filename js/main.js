@@ -8,7 +8,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
-  BODIES, SIDEBAR, KIND_LABEL, SEASONS_N, SEASONS_S, MONTHS_RU, SIM_START, REALISTIC,
+  BODIES, SIDEBAR, KIND_LABEL, SEASONS_N, SEASONS_S, MONTHS_RU, SIM_START, REALISTIC, SCALE,
 } from './data.js';
 import {
   getTextureCanvas, spriteGlow, spriteSelectionRing, spriteStar,
@@ -1252,13 +1252,15 @@ function seasonInfo(rec) {
 // ───────────────────────── подписи (labels) ─────────────────────────
 const labelsRoot = document.getElementById('labels');
 const labelEls = new Map();
+const labelDistEls = new Map();
 for (const d of BODIES) {
   const el = document.createElement('div');
   el.className = `label kind-${d.kind}`;
-  el.innerHTML = `<span class="ldot" style="--c:${d.clr}"></span><span>${d.name}</span>`;
+  el.innerHTML = `<span class="ldot" style="--c:${d.clr}"></span><span class="lname">${d.name}</span><span class="ldist"></span>`;
   el.addEventListener('click', () => select(d.id, true));
   labelsRoot.appendChild(el);
   labelEls.set(d.id, el);
+  labelDistEls.set(d.id, el.querySelector('.ldist'));
 }
 
 function labelThreshold(d) {
@@ -1271,6 +1273,20 @@ function labelThreshold(d) {
   return 4000;
 }
 
+// тела, всегда показывающие брекет-метку (имя + дистанция) на любой дистанции:
+// в реальном масштабе планеты — невидимые точки, без брекетов не сориентироваться.
+const BRACKET_KINDS = new Set(['star', 'planet', 'dwarf', 'wormhole']);
+
+// расстояние в ед. сцены → человекочитаемое (1 ед. = 1000 км)
+function fmtDist(units) {
+  if (!REALISTIC) return `${Math.round(units)} ед`;
+  const au = units / SCALE.AU_UNITS;
+  if (au >= 0.01) return `${au.toFixed(au < 1 ? 3 : au < 100 ? 2 : 1)} а.е.`;
+  const km = units * SCALE.KM_PER_UNIT;
+  if (km >= 1e6) return `${(km / 1e6).toFixed(1)} млн км`;
+  return `${Math.round(km).toLocaleString('ru-RU')} км`;
+}
+
 const projV = new THREE.Vector3();
 function updateLabels() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -1278,6 +1294,7 @@ function updateLabels() {
     const el = labelEls.get(d.id);
     if (!state.showLabels) { el.style.display = 'none'; continue; }
     const rec = bodies.get(d.id);
+    const isBracket = BRACKET_KINDS.has(d.kind);
     let pos;
     if (d.kind === 'belt') {
       const az = Math.atan2(camera.position.z, camera.position.x);
@@ -1289,8 +1306,8 @@ function updateLabels() {
     }
     const dist = camera.position.distanceTo(pos);
     const thr = labelThreshold(d);
-    if (dist > thr) { el.style.display = 'none'; continue; }
-    // не показывать подписи лун/аппаратов, если они слишком близко к камере не нужны
+    // брекеты видны на любой дистанции; остальные подписи гаснут по порогу
+    if (!isBracket && dist > thr) { el.style.display = 'none'; continue; }
     pos.project(camera);
     if (pos.z > 1) { el.style.display = 'none'; continue; }
     const x = (pos.x * 0.5 + 0.5) * w;
@@ -1298,8 +1315,9 @@ function updateLabels() {
     if (x < -80 || x > w + 80 || y < -40 || y > h + 40) { el.style.display = 'none'; continue; }
     el.style.display = 'flex';
     el.style.transform = `translate(-50%, -130%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-    const fade = Math.min(1, (thr - dist) / (thr * 0.22));
-    el.style.opacity = (0.25 + 0.75 * fade).toFixed(2);
+    el.style.opacity = isBracket ? '0.95' : (0.25 + 0.75 * Math.min(1, (thr - dist) / (thr * 0.22))).toFixed(2);
+    const distEl = labelDistEls.get(d.id);
+    if (distEl) distEl.textContent = isBracket ? fmtDist(dist) : '';
     el.classList.toggle('active', state.selected === d.id);
   }
   // линии орбит лун: затухание с расстоянием

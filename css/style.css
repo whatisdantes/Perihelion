@@ -472,6 +472,14 @@ li.open > ul.children { display: block; }
   box-shadow: 0 0 6px var(--c);
 }
 .label.kind-moon, .label.kind-craft { font-size: 10.5px; padding: 2px 8px 2px 6px; }
+.ldist {
+  font-size: 10px; font-weight: 600;
+  color: #84acdc;
+  padding-left: 6px; margin-left: 3px;
+  border-left: 1px solid rgba(140, 180, 255, 0.18);
+  font-variant-numeric: tabular-nums;
+}
+.ldist:empty { display: none; }
 
 /* ───────── подсказка ───────── */
 #hint {
