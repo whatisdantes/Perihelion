@@ -116,6 +116,9 @@ export class ShipControls {
     this._up = new THREE.Vector3();
     this._m = new THREE.Matrix4();
     this._qLook = new THREE.Quaternion();
+    this._grav = new THREE.Vector3();
+    // внешняя гравитация: main.js задаёт функцию (wpos, outVec) → ускорение колодца (ед/с²)
+    this.gravityFn = null;
 
     this._justLocked = false;
     this._onKeyDown = (e) => {
@@ -243,6 +246,14 @@ export class ShipControls {
     if (thrustOn || k.has('KeyS')) {
       const max = this.maxSpeed * (this.boosting ? this.boostMult : 1);
       if (this.vel.lengthSq() > max * max) this.vel.setLength(max);
+    }
+
+    // ── гравитация колодцев (SOI): ускорение к доминирующему телу (из main.js) ──
+    // применяется после тяги/тормоза/клэмпа, до интегрирования — это «настоящая» сила:
+    // её не режет предел скорости.
+    if (this.gravityFn) {
+      this.gravityFn(this.wpos, this._grav);
+      this.vel.addScaledVector(this._grav, dt);
     }
 
     // интегрируем скорость в МИРОВУЮ позицию (Float64); локальная остаётся 0 —

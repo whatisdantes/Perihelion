@@ -546,6 +546,12 @@ body.ship-mode #labels .label { background: rgba(8, 12, 24, 0.82); }
   font-size: 11px; letter-spacing: 0.14em; color: var(--text-dim);
 }
 .fh-head b { color: var(--text); font-weight: 700; }
+.fh-well {
+  margin-top: 6px;
+  font-size: 11px; letter-spacing: 0.02em;
+  color: #9fd0ff;
+}
+.fh-well b { color: #d8ecff; font-weight: 700; }
 .fh-boost {
   font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
   padding: 1px 6px; border-radius: 6px;

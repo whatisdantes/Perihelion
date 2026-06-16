@@ -1126,6 +1126,38 @@ const SUN_R = bodies.get('sun').data.radius;
 uSunRadius.value = SUN_R;
 earthUniforms.uMoonR.value = bodies.get('moon').data.radius;
 
+// ─── гравитационные колодцы (SOI / патч-коник) ───────────────────────────────
+// У крупных тел — сфера влияния (soi×радиус). Внутри корабль притягивается к телу
+// (ускорение ∝ mu×радиус / r²), снаружи — чистая инерция. Доминирует ОДИН колодец
+// (сильнейший по тяге) — как патч-коник в реальной астродинамике. Константы аркадные,
+// тюнятся вживую через window.__app.GRAV.
+const GRAV = { mu: 300, soi: 14, minAlt: 1.05 };
+const GRAV_KINDS = new Set(['star', 'planet', 'dwarf']);
+const gravBodies = BODIES.filter((b) => GRAV_KINDS.has(b.kind));
+let currentWell = null; // { id, name, r, alt } — активный колодец (HUD/орбита)
+shipCtl.gravityFn = (wpos, out) => {
+  let best = null, bestA = 0, bDx = 0, bDy = 0, bDz = 0, bR = 0;
+  for (const b of gravBodies) {
+    const w = bodies.get(b.id).wpos;
+    const dx = w.x - wpos.x, dy = w.y - wpos.y, dz = w.z - wpos.z;
+    const r = Math.hypot(dx, dy, dz);
+    const soi = GRAV.soi * b.radius;
+    if (r >= soi || r < 1e-6) continue;
+    const rr = Math.max(r, GRAV.minAlt * b.radius);    // не делим у поверхности
+    const edge = Math.min(1, (1 - r / soi) * 3);        // плавный вход у границы SOI
+    const a = (GRAV.mu * b.radius) / (rr * rr) * edge;  // тяга к телу (ед/с²)
+    if (a > bestA) { bestA = a; best = b; bDx = dx; bDy = dy; bDz = dz; bR = r; }
+  }
+  if (best) {
+    const k = bestA / bR;                               // |a| на единичное направление
+    out.set(bDx * k, bDy * k, bDz * k);
+    currentWell = { id: best.id, name: best.name, r: bR, alt: bR - best.radius };
+  } else {
+    out.set(0, 0, 0);
+    currentWell = null;
+  }
+};
+
 // КВМ-пул: выбросы стартуют от поверхности Солнца → радиус эмиттера = реальный SUN_R
 const cmePool = [new CMEBurst(SUN_R), new CMEBurst(SUN_R), new CMEBurst(SUN_R)];
 for (const c of cmePool) bodies.get('sun').group.add(c.points);
@@ -1725,12 +1757,21 @@ const fhBoostEl = document.getElementById('fhBoost');
 const fhFoundEl = document.getElementById('fhFound');
 const fhTotalEl = document.getElementById('fhTotal');
 const fhCreditsEl = document.getElementById('fhCredits');
+const fhWellEl = document.getElementById('fhWell');
 function updateFlightHud() {
   const sp = shipCtl.getSpeed();
   if (fhSpeedEl) fhSpeedEl.textContent = Math.round(sp);
   if (fhBarEl) fhBarEl.style.width = `${Math.min(100, (sp / (shipCtl.maxSpeed * shipCtl.boostMult)) * 100)}%`;
   if (fhBoostEl) fhBoostEl.classList.toggle('on', shipCtl.boosting);
   if (fhCreditsEl) fhCreditsEl.textContent = state.credits;
+  if (fhWellEl) {
+    if (currentWell) {
+      fhWellEl.style.display = '';
+      fhWellEl.innerHTML = `тяготение: <b>${currentWell.name}</b> · h ${fmtDist(Math.max(0, currentWell.alt))}`;
+    } else {
+      fhWellEl.style.display = 'none';
+    }
+  }
 }
 
 // ═════════════════════ ИГРА: сканирование и кодекс ═════════════════════
@@ -2077,6 +2118,7 @@ window.__app = {
   renderer, composer, scene, camera, bodies, controls, shipCtl, playerShip,
   toggleShipMode, state, startScan, completeScan, persist,
   origin, applyOrigin, updateBodies, uSunLocal,
+  GRAV, gravBodies, getWell: () => currentWell,
   resetSave: () => { state.discovered.clear(); state.credits = 0; persist(); applyDiscoveredClasses(); },
 };
 window.__cmeEarth = () => {
