@@ -1287,11 +1287,25 @@ function fmtDist(units) {
   return `${Math.round(km).toLocaleString('ru-RU')} км`;
 }
 
+// точка-«прицел» в экранных координатах для брекет-тел: точный аим-пойнт
+// прямо на теле (плашка с именем висит над ним), особенно когда меш — точка.
+const bracketDotEls = new Map();
+for (const d of BODIES) {
+  if (!BRACKET_KINDS.has(d.kind)) continue;
+  const dot = document.createElement('span');
+  dot.className = 'bdot';
+  dot.style.setProperty('--c', d.clr);
+  labelsRoot.appendChild(dot);
+  bracketDotEls.set(d.id, dot);
+}
+
 const projV = new THREE.Vector3();
 function updateLabels() {
   const w = window.innerWidth, h = window.innerHeight;
   for (const d of BODIES) {
     const el = labelEls.get(d.id);
+    const bdot = bracketDotEls.get(d.id);
+    if (bdot) bdot.style.display = 'none';
     if (!state.showLabels) { el.style.display = 'none'; continue; }
     const rec = bodies.get(d.id);
     const isBracket = BRACKET_KINDS.has(d.kind);
@@ -1318,6 +1332,10 @@ function updateLabels() {
     el.style.opacity = isBracket ? '0.95' : (0.25 + 0.75 * Math.min(1, (thr - dist) / (thr * 0.22))).toFixed(2);
     const distEl = labelDistEls.get(d.id);
     if (distEl) distEl.textContent = isBracket ? fmtDist(dist) : '';
+    if (bdot) {
+      bdot.style.display = 'block';
+      bdot.style.transform = `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+    }
     el.classList.toggle('active', state.selected === d.id);
   }
   // линии орбит лун: затухание с расстоянием

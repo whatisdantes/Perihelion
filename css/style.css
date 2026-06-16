@@ -480,6 +480,18 @@ li.open > ul.children { display: block; }
   font-variant-numeric: tabular-nums;
 }
 .ldist:empty { display: none; }
+/* точка-«прицел» брекета: маленький светящийся круг точно на теле */
+.bdot {
+  position: absolute; top: 0; left: 0;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 7px var(--c), inset 0 0 3px var(--c);
+  pointer-events: none;
+  z-index: 9;
+  will-change: transform;
+}
 
 /* ───────── подсказка ───────── */
 #hint {
