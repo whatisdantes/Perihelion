@@ -55,6 +55,10 @@ scene.add(new THREE.AmbientLight(0x223450, 0.55));
 // аналитических теней и Земли (раньше они считали Солнце в начале координат).
 const origin = { x: 0, y: 0, z: 0 };
 const uSunLocal = { value: new THREE.Vector3(0, 0, 0) };
+// радиус Солнца (ед.) — общий uniform для углового размера полутени теней/затмений.
+// Значение проставляется после постройки тел (= bodies.get('sun').data.radius),
+// иначе полутень считалась по старому масштабному радиусу 16 и была неверной.
+const uSunRadius = { value: 16 };
 
 // ─────────────── корабль игрока (режим полёта) ───────────────
 const playerShip = buildPlayerShip();
@@ -369,6 +373,7 @@ const SHADOW_GLSL = /* glsl */`
 uniform vec4 uOccl[4];      // xyz — центр окклюдера (мир), w — радиус
 uniform int uOcclCount;
 uniform vec3 uSunLocal;     // позиция Солнца в текущем (сдвинутом) кадре
+uniform float uSunR;        // радиус Солнца (ед.) — угловой размер для полутени
 float occlShadow(vec3 P) {
   vec3 toSun = uSunLocal - P;
   float dl = length(toSun);
@@ -380,7 +385,7 @@ float occlShadow(vec3 P) {
     float proj = dot(toOcc, ld);
     if (proj <= 0.0 || proj >= dl) continue;
     float d = length(toOcc - ld * proj);
-    float sunAng = 16.0 / dl * 0.55;             // угловой радиус Солнца (полутень)
+    float sunAng = uSunR / dl;                   // угловой радиус Солнца (полутень)
     float occAng = uOccl[i].w / proj;
     float cover = smoothstep(occAng + sunAng, max(occAng - sunAng, 0.0), d / proj);
     float maxCov = clamp((occAng * occAng) / (sunAng * sunAng), 0.0, 1.0);
@@ -428,6 +433,7 @@ function injectShadows(mat, opts) {
     shader.uniforms.uRingNormal = { value: new THREE.Vector3(0, 1, 0) };
     shader.uniforms.uRingRadii = { value: new THREE.Vector2(1, 2) };
     shader.uniforms.uSunLocal = uSunLocal; // общая ссылка — обновляется раз в кадр
+    shader.uniforms.uSunR = uSunRadius;    // общий радиус Солнца (ед.)
 
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vShadowWP;')
@@ -522,7 +528,7 @@ const earthUniforms = {
   uSunDir: { value: new THREE.Vector3(1, 0, 0) },
   uWinterN: { value: 0 }, uWinterS: { value: 1 },
   uMoonPos: { value: new THREE.Vector3(1e6, 0, 0) }, uMoonR: { value: 0.55 },
-  uSunLocal,
+  uSunLocal, uSunR: uSunRadius,
 };
 function buildEarthMaterial() {
   const maps = getTextureCanvas('earth');
@@ -554,7 +560,7 @@ function buildEarthMaterial() {
       uniform float uHasNormal; uniform float uHasSpec; uniform float uHasClouds;
       uniform float uCloudShift;
       uniform vec3 uSunDir; uniform float uWinterN; uniform float uWinterS;
-      uniform vec3 uMoonPos; uniform float uMoonR; uniform vec3 uSunLocal;
+      uniform vec3 uMoonPos; uniform float uMoonR; uniform vec3 uSunLocal; uniform float uSunR;
       varying vec2 vUv; varying vec3 vNw; varying vec3 vPw;
 
       vec3 perturbNormal(vec3 surfNorm, vec3 mapN, vec2 uv) {
@@ -573,7 +579,7 @@ function buildEarthMaterial() {
         float proj = dot(toOcc, ld);
         if (proj <= 0.0) return 1.0;
         float d = length(toOcc - ld * proj);
-        float sunAng = 16.0 / dl * 0.55;
+        float sunAng = uSunR / dl;
         float occAng = uMoonR / proj;
         float cover = smoothstep(occAng + sunAng, max(occAng - sunAng, 0.0), d / proj);
         float maxCov = clamp((occAng * occAng) / (sunAng * sunAng), 0.0, 1.0);
@@ -1115,8 +1121,13 @@ function buildBelt(d, rec) {
 
 for (const d of BODIES) buildBody(d);
 
-// КВМ-пул
-const cmePool = [new CMEBurst(16), new CMEBurst(16), new CMEBurst(16)];
+// реальные радиусы Солнца/Луны → в шейдеры теней/затмений (раньше был старый масштаб 16/0.55)
+const SUN_R = bodies.get('sun').data.radius;
+uSunRadius.value = SUN_R;
+earthUniforms.uMoonR.value = bodies.get('moon').data.radius;
+
+// КВМ-пул: выбросы стартуют от поверхности Солнца → радиус эмиттера = реальный SUN_R
+const cmePool = [new CMEBurst(SUN_R), new CMEBurst(SUN_R), new CMEBurst(SUN_R)];
 for (const c of cmePool) bodies.get('sun').group.add(c.points);
 let nextCME = 3.5;
 let flash = 0;
@@ -1996,8 +2007,8 @@ function animate() {
   sunLight.intensity = 2.6 + flash * 1.1;
   if (sunParts) {
     const pulse = 1 + Math.sin(elapsed * 0.7) * 0.035 + flash * 0.12;
-    sunParts.corona1.scale.setScalar(16 * 4.6 * pulse);
-    sunParts.corona2.scale.setScalar(16 * 6.2 * (2 - pulse));
+    sunParts.corona1.scale.setScalar(SUN_R * 4.6 * pulse);
+    sunParts.corona2.scale.setScalar(SUN_R * 6.2 * (2 - pulse));
     sunParts.corona1.material.rotation += dt * 0.02;
     sunParts.corona2.material.rotation -= dt * 0.015;
     sunParts.halo.material.opacity = 0.8 + flash * 0.2;
