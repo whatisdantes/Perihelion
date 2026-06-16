@@ -1299,6 +1299,24 @@ for (const d of BODIES) {
   bracketDotEls.set(d.id, dot);
 }
 
+// LOD: меш планеты/карлика рисуется только когда крупнее нескольких пикселей;
+// вдали тело представляет брекет (точка + плашка). Гистерезис (4↔7 px) гасит
+// мерцание на границе. tiltNode прячет меш+атмосферу+облака+кольца, оставляя
+// кликабельную мишень и маркер в group.
+const LOD_HIDE_PX = 4, LOD_SHOW_PX = 7;
+function updateLOD() {
+  const k = window.innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  for (const d of BODIES) {
+    if (d.kind !== 'planet' && d.kind !== 'dwarf') continue;
+    const rec = bodies.get(d.id);
+    if (!rec.tiltNode) continue;
+    const dist = camera.position.distanceTo(rec.group.position);
+    const px = (d.radius * 2 * k) / Math.max(dist, 1e-3); // диаметр тела в пикселях
+    if (rec.tiltNode.visible) { if (px < LOD_HIDE_PX) rec.tiltNode.visible = false; }
+    else if (px > LOD_SHOW_PX) rec.tiltNode.visible = true;
+  }
+}
+
 const projV = new THREE.Vector3();
 function updateLabels() {
   const w = window.innerWidth, h = window.innerHeight;
@@ -2025,6 +2043,7 @@ function animate() {
     updateFlightHud();
     updateReticleHud();
   }
+  updateLOD();
   updateLabels();
 
   skyGroup.position.copy(camera.position); // фон следует за камерой → бесконечен
