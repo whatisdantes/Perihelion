@@ -119,6 +119,12 @@ export class ShipControls {
     this._grav = new THREE.Vector3();
     // внешняя гравитация: main.js задаёт функцию (wpos, outVec) → ускорение колодца (ед/с²)
     this.gravityFn = null;
+    // орбитальный захват (клавиша G): {mu, r, w, bodyId}; центр — wpos тела (main.js)
+    this.orbit = null;
+    this.orbitCenter = new THREE.Vector3();
+    this._oRel = new THREE.Vector3();
+    this._oN = new THREE.Vector3();
+    this._oTan = new THREE.Vector3();
 
     this._justLocked = false;
     this._onKeyDown = (e) => {
@@ -209,6 +215,38 @@ export class ShipControls {
     return out;
   }
 
+  // войти в круговую орбиту вокруг тела (center — wpos Vector3, mu — гравит. параметр)
+  startOrbit(center, mu, bodyId) {
+    this._oRel.set(this.wpos.x - center.x, this.wpos.y - center.y, this.wpos.z - center.z);
+    const r = this._oRel.length();
+    if (r < 1e-3) return false;
+    // нормаль плоскости орбиты = r × v; при малой/коллинеарной скорости — перпендикуляр к r
+    this._oN.crossVectors(this._oRel, this.vel);
+    if (this._oN.lengthSq() < 1e-8) this._oN.set(0, 1, 0).cross(this._oRel);
+    if (this._oN.lengthSq() < 1e-8) this._oN.set(1, 0, 0).cross(this._oRel);
+    this._oN.normalize();
+    this.orbit = { mu, r, w: Math.sqrt(mu / (r * r * r)), bodyId };
+    this.orbitCenter.copy(center);
+    return true;
+  }
+
+  // держим круговую орбиту вокруг orbitCenter (стабильно, без дрейф-демпинга);
+  // центр (wpos тела) обновляет main.js каждый кадр — орбита следует за телом.
+  _updateOrbit(dt) {
+    const c = this.orbitCenter, o = this.orbit;
+    this._oRel.set(this.wpos.x - c.x, this.wpos.y - c.y, this.wpos.z - c.z);
+    this._oRel.addScaledVector(this._oN, -this._oRel.dot(this._oN)); // снять дрейф по нормали
+    if (this._oRel.lengthSq() < 1e-9) return;
+    this._oRel.setLength(o.r);                       // зафиксировать радиус → идеальный круг
+    this._oRel.applyAxisAngle(this._oN, o.w * dt);   // продвинуть по орбите
+    this.wpos.x = c.x + this._oRel.x;
+    this.wpos.y = c.y + this._oRel.y;
+    this.wpos.z = c.z + this._oRel.z;
+    this._oTan.crossVectors(this._oN, this._oRel).setLength(o.w * o.r); // касат. скорость
+    this.vel.copy(this._oTan);
+    this.pos.set(0, 0, 0);
+  }
+
   update(dt) {
     if (!this.enabled) return;
     const k = this.keys;
@@ -231,36 +269,46 @@ export class ShipControls {
     this._dq.setFromEuler(this._euler);
     this.quat.multiply(this._dq).normalize();
 
-    // ── тяга ──
-    this.boosting = k.has('ShiftLeft') || k.has('ShiftRight');
-    const accel = this.accel * (this.boosting ? this.boostMult : 1);
-    this._fwd.set(0, 0, -1).applyQuaternion(this.quat);
-    const thrustOn = k.has('KeyW');
-    if (thrustOn) this.vel.addScaledVector(this._fwd, accel * dt);
-    if (k.has('KeyS')) this.vel.addScaledVector(this._fwd, -accel * 0.55 * dt);
+    // тяга W/S разрывает орбитальный захват → сразу обычный полёт
+    if (this.orbit && (k.has('KeyW') || k.has('KeyS'))) this.orbit = null;
 
-    // инерция: по умолчанию корабль дрейфует (космос), Space — активное торможение
-    this.braking = k.has('Space');
-    this.vel.multiplyScalar(Math.pow(this.braking ? this.brakeDamping : this.driftDamping, dt));
-    // предел скорости ограничивает только разгон тягой/бустом; набранный дрейф не срезаем
-    if (thrustOn || k.has('KeyS')) {
-      const max = this.maxSpeed * (this.boosting ? this.boostMult : 1);
-      if (this.vel.lengthSq() > max * max) this.vel.setLength(max);
+    let thrustOn = false;
+    if (this.orbit) {
+      // ── орбитальный захват: круговая орбита вокруг тела, руки свободны ──
+      this.boosting = false;
+      this._updateOrbit(dt);
+    } else {
+      // ── тяга ──
+      this.boosting = k.has('ShiftLeft') || k.has('ShiftRight');
+      const accel = this.accel * (this.boosting ? this.boostMult : 1);
+      this._fwd.set(0, 0, -1).applyQuaternion(this.quat);
+      thrustOn = k.has('KeyW');
+      if (thrustOn) this.vel.addScaledVector(this._fwd, accel * dt);
+      if (k.has('KeyS')) this.vel.addScaledVector(this._fwd, -accel * 0.55 * dt);
+
+      // инерция: по умолчанию корабль дрейфует (космос), Space — активное торможение
+      this.braking = k.has('Space');
+      this.vel.multiplyScalar(Math.pow(this.braking ? this.brakeDamping : this.driftDamping, dt));
+      // предел скорости ограничивает только разгон тягой/бустом; набранный дрейф не срезаем
+      if (thrustOn || k.has('KeyS')) {
+        const max = this.maxSpeed * (this.boosting ? this.boostMult : 1);
+        if (this.vel.lengthSq() > max * max) this.vel.setLength(max);
+      }
+
+      // ── гравитация колодцев (SOI): ускорение к доминирующему телу (из main.js) ──
+      // применяется после тяги/тормоза/клэмпа, до интегрирования — это «настоящая» сила:
+      // её не режет предел скорости.
+      if (this.gravityFn) {
+        this.gravityFn(this.wpos, this._grav);
+        this.vel.addScaledVector(this._grav, dt);
+      }
+
+      // интегрируем скорость в МИРОВУЮ позицию (Float64); локальная остаётся 0 —
+      // floating-origin: корабль стоит в центре, мир движется вокруг (main.js applyOrigin)
+      this.wpos.x += this.vel.x * dt;
+      this.wpos.y += this.vel.y * dt;
+      this.wpos.z += this.vel.z * dt;
     }
-
-    // ── гравитация колодцев (SOI): ускорение к доминирующему телу (из main.js) ──
-    // применяется после тяги/тормоза/клэмпа, до интегрирования — это «настоящая» сила:
-    // её не режет предел скорости.
-    if (this.gravityFn) {
-      this.gravityFn(this.wpos, this._grav);
-      this.vel.addScaledVector(this._grav, dt);
-    }
-
-    // интегрируем скорость в МИРОВУЮ позицию (Float64); локальная остаётся 0 —
-    // floating-origin: корабль стоит в центре, мир движется вокруг (main.js applyOrigin)
-    this.wpos.x += this.vel.x * dt;
-    this.wpos.y += this.vel.y * dt;
-    this.wpos.z += this.vel.z * dt;
     this.pos.set(0, 0, 0);
 
     // ── обновляем корабль ──

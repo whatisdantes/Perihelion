@@ -1158,6 +1158,18 @@ shipCtl.gravityFn = (wpos, out) => {
   }
 };
 
+// орбитальный захват (клавиша G): встать на круговую орбиту вокруг текущего колодца;
+// повторное нажатие или тяга W/S — выход. Вне сферы влияния — нечего захватывать.
+function toggleOrbit() {
+  if (!state.shipMode) return;
+  if (shipCtl.orbit) { shipCtl.orbit = null; return; }
+  if (!currentWell) return;
+  const b = bodies.get(currentWell.id);
+  const w = b.wpos;
+  shipCtl.orbitCenter.set(w.x, w.y, w.z);
+  shipCtl.startOrbit(shipCtl.orbitCenter, GRAV.mu * b.data.radius, currentWell.id);
+}
+
 // КВМ-пул: выбросы стартуют от поверхности Солнца → радиус эмиттера = реальный SUN_R
 const cmePool = [new CMEBurst(SUN_R), new CMEBurst(SUN_R), new CMEBurst(SUN_R)];
 for (const c of cmePool) bodies.get('sun').group.add(c.points);
@@ -1765,11 +1777,19 @@ function updateFlightHud() {
   if (fhBoostEl) fhBoostEl.classList.toggle('on', shipCtl.boosting);
   if (fhCreditsEl) fhCreditsEl.textContent = state.credits;
   if (fhWellEl) {
-    if (currentWell) {
+    if (shipCtl.orbit) {
+      const b = bodies.get(shipCtl.orbit.bodyId);
+      const alt = shipCtl.orbit.r - b.data.radius;
       fhWellEl.style.display = '';
-      fhWellEl.innerHTML = `тяготение: <b>${currentWell.name}</b> · h ${fmtDist(Math.max(0, currentWell.alt))}`;
+      fhWellEl.classList.add('orbiting');
+      fhWellEl.innerHTML = `<b>ОРБИТА</b> · ${b.data.name} · h ${fmtDist(Math.max(0, alt))}`;
+    } else if (currentWell) {
+      fhWellEl.style.display = '';
+      fhWellEl.classList.remove('orbiting');
+      fhWellEl.innerHTML = `тяготение: <b>${currentWell.name}</b> · h ${fmtDist(Math.max(0, currentWell.alt))} · <kbd>G</kbd> орбита`;
     } else {
       fhWellEl.style.display = 'none';
+      fhWellEl.classList.remove('orbiting');
     }
   }
 }
@@ -1944,6 +1964,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); if (!state.shipMode) setPaused(!state.paused); return; }
   if (e.code === 'KeyF') { e.preventDefault(); toggleShipMode(); return; }
   if (e.code === 'KeyR' && state.shipMode) { e.preventDefault(); startScan(); return; }
+  if (e.code === 'KeyG' && state.shipMode) { e.preventDefault(); toggleOrbit(); return; }
   if (e.code === 'Escape') { deselect(); helpModal.classList.remove('open'); return; }
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight'].includes(e.code)) {
     keys.add(e.code);
@@ -2026,6 +2047,11 @@ function animate() {
 
   // floating-origin: движение режима задаёт origin, applyOrigin переносит сцену к нулю
   if (state.shipMode) {
+    // орбита следует за движущимся телом: центр = его wpos на этом кадре (до update)
+    if (shipCtl.orbit) {
+      const w = bodies.get(shipCtl.orbit.bodyId).wpos;
+      shipCtl.orbitCenter.set(w.x, w.y, w.z);
+    }
     shipCtl.update(dt);
     origin.x = shipCtl.wpos.x; origin.y = shipCtl.wpos.y; origin.z = shipCtl.wpos.z;
   } else {
@@ -2118,7 +2144,7 @@ window.__app = {
   renderer, composer, scene, camera, bodies, controls, shipCtl, playerShip,
   toggleShipMode, state, startScan, completeScan, persist,
   origin, applyOrigin, updateBodies, uSunLocal,
-  GRAV, gravBodies, getWell: () => currentWell,
+  GRAV, gravBodies, getWell: () => currentWell, toggleOrbit,
   resetSave: () => { state.discovered.clear(); state.credits = 0; persist(); applyDiscoveredClasses(); },
 };
 window.__cmeEarth = () => {
