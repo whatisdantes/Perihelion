@@ -1177,7 +1177,7 @@ shipCtl.gravityFn = (wpos, out) => {
 // орбитальный захват (клавиша G): встать на круговую орбиту вокруг текущего колодца;
 // повторное нажатие или тяга W/S — выход. Вне сферы влияния — нечего захватывать.
 function toggleOrbit() {
-  if (!state.shipMode) return;
+  if (!state.shipMode || shipCtl.warp) return;   // во время варпа орбиту не трогаем
   if (shipCtl.orbit) { shipCtl.orbit = null; return; }
   if (!currentWell) return;
   const b = bodies.get(currentWell.id);
@@ -1222,6 +1222,8 @@ function engageWarp() {
   const arrivalDist = b.data.kind === 'wormhole' ? b.data.radius * 8 : GRAV.soi * b.data.radius;
   if (dist <= arrivalDist * 1.15) { warpBanner = elapsed + 1.6; return; } // уже на месте
   shipCtl.orbit = null;
+  currentWell = null;            // варп = суперкруиз без гравитации — чистим устаревший колодец,
+                                 // иначе фантомная строка «тяготение: …» висит в HUD во время варпа
   shipCtl.warpCenter.set(w.x, w.y, w.z);
   shipCtl.warp = { bodyId: id, arrivalDist, rate: WARP.rate, dist };
 }
