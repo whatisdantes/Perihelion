@@ -1823,7 +1823,7 @@ function toggleShipMode() {
 // HUD режима полёта (минимальный — основа будущего кокпита)
 const fhSpeedEl = document.getElementById('fhSpeed');
 const fhBarEl = document.getElementById('fhBar');
-const fhBoostEl = document.getElementById('fhBoost');
+const fhThrottleEl = document.getElementById('fhThrottle');
 const fhFoundEl = document.getElementById('fhFound');
 const fhTotalEl = document.getElementById('fhTotal');
 const fhCreditsEl = document.getElementById('fhCredits');
@@ -1832,8 +1832,12 @@ const fhWarpEl = document.getElementById('fhWarp');
 function updateFlightHud() {
   const sp = shipCtl.getSpeed();
   if (fhSpeedEl) fhSpeedEl.textContent = Math.round(sp);
-  if (fhBarEl) fhBarEl.style.width = `${Math.min(100, (sp / (shipCtl.maxSpeed * shipCtl.boostMult)) * 100)}%`;
-  if (fhBoostEl) fhBoostEl.classList.toggle('on', shipCtl.boosting);
+  if (fhBarEl) fhBarEl.style.width = `${Math.min(100, (sp / 10000) * 100)}%`;
+  if (fhThrottleEl) {
+    const t = shipCtl.throttle, tgt = shipCtl.THROTTLE_SPEEDS[t + 2];
+    fhThrottleEl.textContent = `режим ${t > 0 ? `+${t}` : t} · ${tgt} ед/с`;
+    fhThrottleEl.classList.toggle('rev', t < 0);
+  }
   if (fhCreditsEl) fhCreditsEl.textContent = state.credits;
   if (fhWarpEl) {
     if (shipCtl.warp) {
@@ -1966,6 +1970,14 @@ function showDiscovery(d) {
   bannerTimer = setTimeout(() => bannerEl.classList.remove('show'), 2600);
 }
 
+// краткий баннер для полётных событий (напр. заглушка посадки)
+function flightBanner(text) {
+  bannerEl.innerHTML = `<b>${text}</b>`;
+  bannerEl.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => bannerEl.classList.remove('show'), 2200);
+}
+
 function applyDiscoveredClasses() {
   document.querySelectorAll('#tree .row').forEach((r) => {
     r.classList.toggle('found', state.discovered.has(r.dataset.id));
@@ -2037,6 +2049,10 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR' && state.shipMode) { e.preventDefault(); startScan(); return; }
   if (e.code === 'KeyG' && state.shipMode) { e.preventDefault(); toggleOrbit(); return; }
   if (e.code === 'KeyC' && state.shipMode) { e.preventDefault(); engageWarp(); return; }
+  if (e.code === 'KeyX' && state.shipMode) { e.preventDefault(); flightBanner('Посадка — этап 13 (скоро)'); return; }
+  // тяга: Shift +1 режим, Ctrl −1 (по одному шагу за нажатие, без автоповтора)
+  if (state.shipMode && !e.repeat && (e.code === 'ShiftLeft' || e.code === 'ShiftRight')) { e.preventDefault(); shipCtl.stepThrottle(1); return; }
+  if (state.shipMode && !e.repeat && (e.code === 'ControlLeft' || e.code === 'ControlRight')) { e.preventDefault(); shipCtl.stepThrottle(-1); return; }
   if (e.code === 'Escape') { deselect(); helpModal.classList.remove('open'); return; }
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight'].includes(e.code)) {
     keys.add(e.code);
