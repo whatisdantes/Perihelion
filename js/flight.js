@@ -7,65 +7,88 @@ import * as THREE from 'three';
 import { spriteGlow } from './textures.js';
 
 // ───────────────────────── модель корабля ─────────────────────────
-// Нос направлен в −Z (вперёд), двигатели — сзади (+Z).
+// Калдарийский крейсер в духе EVE «Caracal»: слоистый угловатый сине-серый корпус,
+// дорсальная сенсорная башня, боковые гондолы, многосопловая корма. Нос — в −Z.
+// Строится в «модельных» единицах (~6 длиной); истинный масштаб задаёт main.js
+// (setShipLength) — реальный крейсер ≈ 250 м = 2.5e-4 ед сцены.
 export function buildPlayerShip() {
   const g = new THREE.Group();
-  const hull = new THREE.MeshStandardMaterial({
-    color: 0xd2dae8, metalness: 0.6, roughness: 0.38, emissive: 0x0e1730, emissiveIntensity: 0.4,
-  });
-  const accent = new THREE.MeshStandardMaterial({
-    color: 0x2c4a8c, metalness: 0.5, roughness: 0.3, emissive: 0x16306b, emissiveIntensity: 0.65,
-  });
-  const dark = new THREE.MeshStandardMaterial({
-    color: 0x3a4150, metalness: 0.7, roughness: 0.45, emissive: 0x0a0a14, emissiveIntensity: 0.2,
-  });
+  const M = (color, metalness, roughness, emissive = 0x0a1020, ei = 0.35) =>
+    new THREE.MeshStandardMaterial({ color, metalness, roughness, emissive, emissiveIntensity: ei });
+  const hull = M(0x8c96a6, 0.72, 0.46);
+  const hullLt = M(0xa8b2c0, 0.66, 0.5);
+  const dark = M(0x39414f, 0.8, 0.42, 0x05070d, 0.3);
+  const accent = M(0x2f6dff, 0.4, 0.3, 0x2456e0, 1.6);
+  const glassMat = M(0x101a2e, 0.3, 0.16, 0x1b3b7a, 0.9);
 
-  // фюзеляж (конус носом в −Z)
-  const body = new THREE.Mesh(new THREE.ConeGeometry(0.42, 2.3, 18), hull);
-  body.rotation.x = -Math.PI / 2;
-  g.add(body);
+  const add = (geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, rz);
+    g.add(m);
+    return m;
+  };
 
-  // «фонарь» кабины
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), accent);
-  canopy.position.set(0, 0.16, -0.35);
-  canopy.scale.set(1, 0.7, 1.5);
-  g.add(canopy);
+  // ── корпус: слоистые плиты ──
+  add(new THREE.BoxGeometry(1.3, 0.46, 3.6), hull, 0, 0, 0);            // нижняя плита
+  add(new THREE.BoxGeometry(0.95, 0.34, 2.5), hullLt, 0, 0.36, -0.25); // верхняя палуба
+  add(new THREE.BoxGeometry(1.16, 0.2, 2.0), dark, 0, -0.28, 0.1);     // брюшная панель
+  for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.22, 0.5, 2.8), hull, s * 0.72, 0.02, 0.1); // борта
 
-  // крылья
+  // ── нос-клин (плоский 4-гранный) ──
+  add(new THREE.ConeGeometry(0.62, 1.7, 4), hull, 0, 0.04, -2.55, -Math.PI / 2, 0, Math.PI / 4)
+    .scale.set(1.25, 0.62, 1);
+  add(new THREE.BoxGeometry(0.5, 0.16, 0.8), dark, 0, 0.16, -1.9);
+
+  // ── дорсальная сенсорная башня (калдарийская черта) ──
+  add(new THREE.BoxGeometry(0.34, 0.55, 0.6), hullLt, 0, 0.72, -0.55);
+  add(new THREE.BoxGeometry(0.2, 0.3, 0.3), dark, 0, 1.05, -0.55);
+  add(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 6), hull, 0, 1.35, -0.55);
+  add(new THREE.SphereGeometry(0.06, 8, 6), accent, 0, 1.62, -0.55);
+
+  // ── боковые гондолы (свёрнуты внутрь) ──
   for (const s of [-1, 1]) {
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.7), accent);
-    wing.position.set(s * 0.95, -0.02, 0.45);
-    wing.rotation.z = s * 0.12;
-    wing.rotation.y = s * -0.22;
-    g.add(wing);
-    // законцовка-двигатель
-    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.1, 0.7, 12), dark);
-    pod.rotation.x = Math.PI / 2;
-    pod.position.set(s * 1.55, -0.02, 0.55);
-    g.add(pod);
+    add(new THREE.BoxGeometry(0.4, 0.5, 2.1), hull, s * 0.95, -0.02, 0.55, 0, s * -0.06, 0);
+    add(new THREE.BoxGeometry(0.34, 0.4, 0.5), dark, s * 0.98, -0.02, 1.55);
+    add(new THREE.CylinderGeometry(0.15, 0.11, 0.34, 10), dark, s * 0.98, -0.02, 1.78, Math.PI / 2, 0, 0);
   }
 
-  // центральный двигатель
-  const eng = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 0.6, 14), dark);
-  eng.rotation.x = Math.PI / 2;
-  eng.position.set(0, 0, 1.05);
-  g.add(eng);
+  // ── кормовой двигательный блок + сопла ──
+  add(new THREE.BoxGeometry(1.0, 0.5, 0.55), dark, 0, 0, 1.85);
+  for (const x of [-0.3, 0.3]) add(new THREE.CylinderGeometry(0.17, 0.12, 0.38, 10), dark, x, 0.02, 2.1, Math.PI / 2, 0, 0);
+  add(new THREE.CylinderGeometry(0.2, 0.14, 0.4, 12), dark, 0, 0.02, 2.12, Math.PI / 2, 0, 0);
 
-  // свечение сопел (растёт с тягой)
+  // ── мостик (тёмное стекло) ──
+  add(new THREE.SphereGeometry(0.22, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), glassMat, 0, 0.28, -1.15)
+    .scale.set(1, 0.7, 1.6);
+
+  // ── синие акцентные полосы ──
+  for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.05, 0.1, 2.2), accent, s * 0.66, 0.06, 0);
+  add(new THREE.BoxGeometry(0.5, 0.05, 0.08), accent, 0, 0.54, -1.2);
+
+  // ── гриблы (панели) ──
+  for (const [x, y, z] of [[0.3, 0.18, -0.8], [-0.35, 0.2, 0.3], [0, 0.26, 0.9], [0.4, -0.1, -0.4], [-0.3, -0.12, 0.6]])
+    add(new THREE.BoxGeometry(0.18, 0.1, 0.22), dark, x, y, z);
+
+  // ── навигационные огни (красный слева, зелёный справа) ──
+  add(new THREE.SphereGeometry(0.05, 8, 6), M(0xff3030, 0.2, 0.4, 0xff2020, 2.2), -1.18, -0.02, 0.5);
+  add(new THREE.SphereGeometry(0.05, 8, 6), M(0x30ff50, 0.2, 0.4, 0x20ff40, 2.2), 1.18, -0.02, 0.5);
+
+  // ── свечение сопел (растёт с тягой) ──
   const glowTex = new THREE.CanvasTexture(spriteGlow('rgba(150,205,255,0.95)', 'rgba(60,120,240,0.18)', 128));
   const glows = [];
-  for (const x of [-1.55, 0, 1.55]) {
+  for (const [x, y, z] of [[-0.98, -0.02, 1.98], [0, 0.02, 2.36], [0.98, -0.02, 1.98], [-0.3, 0.02, 2.34], [0.3, 0.02, 2.34]]) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6,
     }));
-    sp.position.set(x, x === 0 ? 0 : -0.02, x === 0 ? 1.45 : 0.95);
+    sp.position.set(x, y, z);
     sp.scale.setScalar(x === 0 ? 0.95 : 0.7);
     g.add(sp);
     glows.push(sp);
   }
 
-  g.scale.setScalar(0.62);
   g.userData.glows = glows;
+  g.userData.modelLength = 5.9; // нос z≈−3.4 … сопла z≈+2.5
   return g;
 }
 
@@ -101,6 +124,7 @@ export class ShipControls {
     this.camLead = 6;         // насколько вперёд смотрит камера (кадрирование)
     this.camLag = 0.0009;     // плавность позиции (меньше = плавнее)
     this.camRotLag = 0.0006;  // плавность поворота
+    this.spawnOffset = 10;    // на сколько ед. вперёд спавнить корабль (масштаб. под него)
 
     // ввод
     this.keys = new Set();
@@ -163,9 +187,9 @@ export class ShipControls {
     const ox = worldOrigin ? worldOrigin.x : 0;
     const oy = worldOrigin ? worldOrigin.y : 0;
     const oz = worldOrigin ? worldOrigin.z : 0;
-    this.wpos.x = camera.position.x + ox + this._tmp.x * 10;
-    this.wpos.y = camera.position.y + oy + this._tmp.y * 10;
-    this.wpos.z = camera.position.z + oz + this._tmp.z * 10;
+    this.wpos.x = camera.position.x + ox + this._tmp.x * this.spawnOffset;
+    this.wpos.y = camera.position.y + oy + this._tmp.y * this.spawnOffset;
+    this.wpos.z = camera.position.z + oz + this._tmp.z * this.spawnOffset;
     this.pos.set(0, 0, 0);
     this.quat.setFromUnitVectors(new THREE.Vector3(0, 0, -1), this._tmp);
     this.vel.set(0, 0, 0);
@@ -208,6 +232,16 @@ export class ShipControls {
 
   getSpeed() {
     return this.vel.length();
+  }
+
+  // подстроить отступы чейз-камеры и спавна под истинную длину корабля (ед.),
+  // сохраняя прежнее экранное кадрирование (те же кратности к длине корпуса).
+  configureForShipLength(lenU) {
+    this.shipLen = lenU;
+    this.camBack = lenU * 5.3;
+    this.camUp = lenU * 1.5;
+    this.camLead = lenU * 4.2;
+    this.spawnOffset = lenU * 7;
   }
 
   _desiredCam(out) {

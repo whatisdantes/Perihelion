@@ -66,6 +66,20 @@ playerShip.visible = false;
 scene.add(playerShip);
 const shipCtl = new ShipControls(camera, canvas, { ship: playerShip, fovBase: camera.fov });
 
+// Истинный масштаб корабля: реальный крейсер ≈ 250 м = 2.5e-4 ед (1 ед = 1000 км).
+// Камера/спавн/near-clip тянутся под него (на экране корабль тот же, но планеты
+// теперь нависают в натуральную величину). Тюнинг вживую: window.__app.setShipLength(м).
+function setShipLength(meters) {
+  const lenU = meters / 1e6;                       // м → ед сцены
+  playerShip.scale.setScalar(lenU / playerShip.userData.modelLength);
+  shipCtl.configureForShipLength(lenU);
+  // near-clip с запасом ближе кормы корабля (~1.3e-3 ед от камеры), но не экстремально мелкий —
+  // log-depth тянет диапазон до far 3e7; проверено, что рендер здоров на ~4e-4.
+  camera.near = lenU * 1.2;                          // ≈300 м
+  camera.updateProjectionMatrix();
+}
+if (REALISTIC) setShipLength(250);
+
 // ─────────────── постобработка: bloom ───────────────
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(
   window.innerWidth, window.innerHeight,
@@ -2144,7 +2158,7 @@ window.__app = {
   renderer, composer, scene, camera, bodies, controls, shipCtl, playerShip,
   toggleShipMode, state, startScan, completeScan, persist,
   origin, applyOrigin, updateBodies, uSunLocal,
-  GRAV, gravBodies, getWell: () => currentWell, toggleOrbit,
+  GRAV, gravBodies, getWell: () => currentWell, toggleOrbit, setShipLength,
   resetSave: () => { state.discovered.clear(); state.credits = 0; persist(); applyDiscoveredClasses(); },
 };
 window.__cmeEarth = () => {
