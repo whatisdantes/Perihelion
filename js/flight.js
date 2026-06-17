@@ -6,6 +6,8 @@
 import * as THREE from 'three';
 import { spriteGlow } from './textures.js';
 
+const FWD = new THREE.Vector3(0, 0, -1); // локальный «нос» корабля
+
 // ───────────────────────── модель корабля ─────────────────────────
 // Калдарийский крейсер в духе EVE «Caracal»: слоистый угловатый сине-серый корпус,
 // дорсальная сенсорная башня, боковые гондолы, многосопловая корма. Нос — в −Z.
@@ -149,6 +151,11 @@ export class ShipControls {
     this._oRel = new THREE.Vector3();
     this._oN = new THREE.Vector3();
     this._oTan = new THREE.Vector3();
+    // варп-круиз (Elite supercruise): {bodyId, arrivalDist, rate, dist}; центр — wpos
+    // цели, обновляет main.js каждый кадр. Скорость ∝ оставшейся дистанции → плавный
+    // экспоненциальный подлёт и торможение, выход в сублайт у границы воронки.
+    this.warp = null;
+    this.warpCenter = new THREE.Vector3();
 
     this._justLocked = false;
     this._onKeyDown = (e) => {
@@ -281,6 +288,39 @@ export class ShipControls {
     this.pos.set(0, 0, 0);
   }
 
+  // варп-круиз: нос автонаводится на цель, скорость ∝ оставшейся дистанции (экспон.
+  // подлёт без перелёта), у границы воронки — выход в сублайт. Центр (wpos цели)
+  // обновляет main.js каждый кадр. Возвращает текущую скорость (для HUD/эффекта).
+  _updateWarp(dt) {
+    const c = this.warpCenter, wp = this.wpos, w = this.warp;
+    this._oRel.set(c.x - wp.x, c.y - wp.y, c.z - wp.z); // к цели
+    const dist = this._oRel.length();
+    w.dist = dist;
+    if (dist < 1e-6) { this.warp = null; return 0; }
+    this._oRel.divideScalar(dist);                       // единичное направление
+    const remaining = dist - w.arrivalDist;
+    // прибытие у границы воронки — выходим в сублайт, дальше подхватит гравитация.
+    // Нужен запас: скорость ∝ remaining асимптотит к границе и без него её не пересечь.
+    if (remaining <= w.arrivalDist * 0.06) {
+      const vmag = THREE.MathUtils.clamp(remaining * w.rate, 35, 120);
+      this.vel.copy(this._oRel).multiplyScalar(vmag);
+      this.warp = null;
+      return vmag;
+    }
+    // автонаведение носа на цель
+    this._qLook.setFromUnitVectors(FWD, this._oRel);
+    this.quat.slerp(this._qLook, 1 - Math.pow(0.0008, dt)).normalize();
+    // движение: скорость ∝ оставшейся дистанции → плавное экспоненциальное торможение
+    const speed = remaining * w.rate;
+    const step = speed * dt;
+    wp.x += this._oRel.x * step;
+    wp.y += this._oRel.y * step;
+    wp.z += this._oRel.z * step;
+    this.vel.copy(this._oRel).multiplyScalar(speed);
+    this.pos.set(0, 0, 0);
+    return speed;
+  }
+
   update(dt) {
     if (!this.enabled) return;
     const k = this.keys;
@@ -303,11 +343,17 @@ export class ShipControls {
     this._dq.setFromEuler(this._euler);
     this.quat.multiply(this._dq).normalize();
 
-    // тяга W/S разрывает орбитальный захват → сразу обычный полёт
+    // тяга/тормоз разрывают варп и орбитальный захват → сразу обычный полёт
+    if (this.warp && (k.has('KeyW') || k.has('KeyS') || k.has('Space'))) this.warp = null;
     if (this.orbit && (k.has('KeyW') || k.has('KeyS'))) this.orbit = null;
 
     let thrustOn = false;
-    if (this.orbit) {
+    this.warpSpeed = 0;
+    if (this.warp) {
+      // ── варп-круиз: автопилот к цели, гравитация/тяга отключены ──
+      this.boosting = false;
+      this.warpSpeed = this._updateWarp(dt);
+    } else if (this.orbit) {
       // ── орбитальный захват: круговая орбита вокруг тела, руки свободны ──
       this.boosting = false;
       this._updateOrbit(dt);
@@ -368,7 +414,8 @@ export class ShipControls {
     this.camera.quaternion.slerp(this._qLook, 1 - Math.pow(this.camRotLag, dt));
 
     // FOV-рывок на бусте
-    const targetFov = this.boosting && thrustOn ? this.fovBoost : this.fovBase;
+    const targetFov = this.warp ? this.fovBase + 20
+      : (this.boosting && thrustOn ? this.fovBoost : this.fovBase);
     this.camera.fov += (targetFov - this.camera.fov) * (1 - Math.pow(0.015, dt));
     this.camera.updateProjectionMatrix();
   }

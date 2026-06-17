@@ -14,6 +14,7 @@ import {
   getTextureCanvas, spriteGlow, spriteSelectionRing, spriteStar,
 } from './textures.js';
 import { wormholeTunnel, wormholeArrival } from './wormhole-fx.js';
+import { createWarpFX } from './warp-fx.js';
 import { ShipControls, buildPlayerShip } from './flight.js';
 
 const TWO_PI = Math.PI * 2;
@@ -65,6 +66,7 @@ const playerShip = buildPlayerShip();
 playerShip.visible = false;
 scene.add(playerShip);
 const shipCtl = new ShipControls(camera, canvas, { ship: playerShip, fovBase: camera.fov });
+const warpFx = createWarpFX();
 
 // Истинный масштаб корабля: реальный крейсер ≈ 250 м = 2.5e-4 ед (1 ед = 1000 км).
 // Камера/спавн/near-clip тянутся под него (на экране корабль тот же, но планеты
@@ -1184,6 +1186,46 @@ function toggleOrbit() {
   shipCtl.startOrbit(shipCtl.orbitCenter, GRAV.mu * b.data.radius, currentWell.id);
 }
 
+// ─── варп-круиз (этап 8): быстрый управляемый перелёт к телу ──────────────────
+// Скорость ∝ оставшейся дистанции → экспоненциальный подлёт и торможение В воронку
+// (SOI), выход в сублайт у границы — НЕ телепорт. Клавиша C (повторно/тяга — отмена).
+const WARP = { rate: 1.8 };
+const WARP_KINDS = new Set(['star', 'planet', 'dwarf', 'wormhole']);
+const warpTargets = BODIES.filter((b) => WARP_KINDS.has(b.kind));
+const _wf = new THREE.Vector3(), _wt = new THREE.Vector3();
+let warpBanner = 0; // elapsed-таймер подсказки «нет цели»
+
+// цель варпа = тело, ближайшее к направлению взгляда (на что наводишься)
+function pickWarpTarget() {
+  camera.getWorldDirection(_wf);
+  let best = null, bestDot = 0.55; // ~57° от курса
+  for (const b of warpTargets) {
+    _wt.copy(bodies.get(b.id).group.position).sub(camera.position);
+    const dist = _wt.length();
+    if (dist < 1e-3) continue;
+    _wt.divideScalar(dist);
+    const dot = _wt.dot(_wf);
+    if (dot > bestDot) { bestDot = dot; best = b.id; }
+  }
+  return best;
+}
+
+function engageWarp() {
+  if (!state.shipMode) return;
+  if (shipCtl.warp) { shipCtl.warp = null; return; }      // отмена
+  const id = pickWarpTarget();
+  if (!id) { warpBanner = elapsed + 1.6; return; }
+  const b = bodies.get(id);
+  const w = b.wpos;
+  const dist = Math.hypot(w.x - shipCtl.wpos.x, w.y - shipCtl.wpos.y, w.z - shipCtl.wpos.z);
+  // выходим у границы воронки (SOI) — там подхватит гравитация; у червоточины — у радиуса
+  const arrivalDist = b.data.kind === 'wormhole' ? b.data.radius * 8 : GRAV.soi * b.data.radius;
+  if (dist <= arrivalDist * 1.15) { warpBanner = elapsed + 1.6; return; } // уже на месте
+  shipCtl.orbit = null;
+  shipCtl.warpCenter.set(w.x, w.y, w.z);
+  shipCtl.warp = { bodyId: id, arrivalDist, rate: WARP.rate, dist };
+}
+
 // КВМ-пул: выбросы стартуют от поверхности Солнца → радиус эмиттера = реальный SUN_R
 const cmePool = [new CMEBurst(SUN_R), new CMEBurst(SUN_R), new CMEBurst(SUN_R)];
 for (const c of cmePool) bodies.get('sun').group.add(c.points);
@@ -1784,12 +1826,25 @@ const fhFoundEl = document.getElementById('fhFound');
 const fhTotalEl = document.getElementById('fhTotal');
 const fhCreditsEl = document.getElementById('fhCredits');
 const fhWellEl = document.getElementById('fhWell');
+const fhWarpEl = document.getElementById('fhWarp');
 function updateFlightHud() {
   const sp = shipCtl.getSpeed();
   if (fhSpeedEl) fhSpeedEl.textContent = Math.round(sp);
   if (fhBarEl) fhBarEl.style.width = `${Math.min(100, (sp / (shipCtl.maxSpeed * shipCtl.boostMult)) * 100)}%`;
   if (fhBoostEl) fhBoostEl.classList.toggle('on', shipCtl.boosting);
   if (fhCreditsEl) fhCreditsEl.textContent = state.credits;
+  if (fhWarpEl) {
+    if (shipCtl.warp) {
+      const b = bodies.get(shipCtl.warp.bodyId);
+      fhWarpEl.style.display = '';
+      fhWarpEl.innerHTML = `ВАРП → <b>${b.data.name}</b> · ${fmtDist(shipCtl.warp.dist)}`;
+    } else if (warpBanner > elapsed) {
+      fhWarpEl.style.display = '';
+      fhWarpEl.textContent = 'ВАРП: наведись на объект и жми C';
+    } else {
+      fhWarpEl.style.display = 'none';
+    }
+  }
   if (fhWellEl) {
     if (shipCtl.orbit) {
       const b = bodies.get(shipCtl.orbit.bodyId);
@@ -1979,6 +2034,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyF') { e.preventDefault(); toggleShipMode(); return; }
   if (e.code === 'KeyR' && state.shipMode) { e.preventDefault(); startScan(); return; }
   if (e.code === 'KeyG' && state.shipMode) { e.preventDefault(); toggleOrbit(); return; }
+  if (e.code === 'KeyC' && state.shipMode) { e.preventDefault(); engageWarp(); return; }
   if (e.code === 'Escape') { deselect(); helpModal.classList.remove('open'); return; }
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight'].includes(e.code)) {
     keys.add(e.code);
@@ -2061,10 +2117,14 @@ function animate() {
 
   // floating-origin: движение режима задаёт origin, applyOrigin переносит сцену к нулю
   if (state.shipMode) {
-    // орбита следует за движущимся телом: центр = его wpos на этом кадре (до update)
+    // орбита/варп следуют за движущимся телом: центр = его wpos на этом кадре (до update)
     if (shipCtl.orbit) {
       const w = bodies.get(shipCtl.orbit.bodyId).wpos;
       shipCtl.orbitCenter.set(w.x, w.y, w.z);
+    }
+    if (shipCtl.warp) {
+      const w = bodies.get(shipCtl.warp.bodyId).wpos;
+      shipCtl.warpCenter.set(w.x, w.y, w.z);
     }
     shipCtl.update(dt);
     origin.x = shipCtl.wpos.x; origin.y = shipCtl.wpos.y; origin.z = shipCtl.wpos.z;
@@ -2072,6 +2132,9 @@ function animate() {
     origin.x = 0; origin.y = 0; origin.z = 0;
   }
   applyOrigin();
+  // варп-эффект: яркость ~ текущая варп-скорость (гаснет при выходе)
+  warpFx.setIntensity(state.shipMode && shipCtl.warp ? THREE.MathUtils.clamp(shipCtl.warpSpeed / 3000, 0.3, 1) : 0);
+  warpFx.update(dt);
 
   // обзорная камера читает уже сдвинутые позиции
   if (!state.shipMode) {
@@ -2159,6 +2222,7 @@ window.__app = {
   toggleShipMode, state, startScan, completeScan, persist,
   origin, applyOrigin, updateBodies, uSunLocal,
   GRAV, gravBodies, getWell: () => currentWell, toggleOrbit, setShipLength,
+  WARP, engageWarp, pickWarpTarget,
   resetSave: () => { state.discovered.clear(); state.credits = 0; persist(); applyDiscoveredClasses(); },
 };
 window.__cmeEarth = () => {

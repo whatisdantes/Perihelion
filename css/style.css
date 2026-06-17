@@ -555,6 +555,13 @@ body.ship-mode #labels .label { background: rgba(8, 12, 24, 0.82); }
 .fh-well kbd { font-size: 9px; padding: 1px 4px; }
 .fh-well.orbiting { color: #7df0c4; }
 .fh-well.orbiting b { color: #b8ffe6; letter-spacing: 0.08em; }
+.fh-warp {
+  margin-top: 6px;
+  font-size: 11px; letter-spacing: 0.06em;
+  color: #9fd0ff;
+  text-shadow: 0 0 10px rgba(120, 180, 255, 0.6);
+}
+.fh-warp b { color: #ddeeff; font-weight: 800; letter-spacing: 0.1em; }
 .fh-boost {
   font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
   padding: 1px 6px; border-radius: 6px;
