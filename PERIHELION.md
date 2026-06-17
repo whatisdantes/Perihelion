@@ -16,9 +16,12 @@
 
 ## Сделано (закоммичено, ветка `main` → github.com/whatisdantes/Perihelion)
 
-- **Полётная модель** (`js/flight.js`): кватернионное 6DOF-управление, чейз-камера, буст
-  (рывок FOV), мышь через pointer-lock (с клэмпом и `unadjustedMovement`), **аркадный
-  дрейф + тормоз** (Space — тормоз). Вход/выход — клавиша **F**.
+- **Полётная модель** (`js/flight.js`): **throttle-круиз** — 6 режимов тяги
+  (−2..3 = −1000/−500/0/500/2500/10000 ед/с, шаг `Shift`/`Ctrl`), без инерции (движок держит
+  заданную скорость, но гравитация колодца перетягивает). Руль с клавиш: **W/S тангаж,
+  A/D рыскание** (крен убран). Мышь = **free-look** (обзор вокруг корабля, возврат за корму).
+  Камера **жёстко привязана** к кораблю (без лагов → не отрывается). `C` варп, `G` орбита,
+  `X` посадка (заглушка-баннер, этап 13), `F` вход/выход, `ЛКМ`/`R` скан.
 - HUD полёта + центральный прицел.
 - **Сканирование + кодекс**: захват цели в конусе (залок на время скана, чтобы соседи не
   перебивали), скан по ЛКМ/R (~0.6с) → открытие: +100 кредитов, баннер, ✓ в сайдбаре,
@@ -141,7 +144,7 @@ floating-origin) уже есть — нужен истинный масштаб 
   origin, applyOrigin, updateBodies, uSunLocal, GRAV, gravBodies, getWell(), toggleOrbit,
   setShipLength(м), WARP, engageWarp, pickWarpTarget }`.
   `window.__cmeEarth()` — выброс к Земле. Тюнинг полёта вживую: `window.__app.shipCtl`
-  (mouseSens, maxSpeed, driftDamping, brakeDamping, maxTurn, camBack/camUp/camLead);
+  (THROTTLE_SPEEDS, engineAccel, pitchRate, yawRate, lookSens, lookReturn, camBack/camUp/camLead);
   гравитация — `window.__app.GRAV` (mu, soi, minAlt). `resetSave()` чистит сейв.
 - **Сейв:** `localStorage['perihelion.save.v1']` = `{v, discovered:[ids], credits}`.
 - **Git:** ветка `main`, remote `origin` → https://github.com/whatisdantes/Perihelion
