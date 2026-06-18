@@ -1846,11 +1846,11 @@ const fhAltEl = document.getElementById('fhAlt');
 function updateFlightHud() {
   const sp = shipCtl.getSpeed();
   if (fhSpeedEl) fhSpeedEl.textContent = Math.round(sp);
-  if (fhBarEl) fhBarEl.style.width = `${Math.min(100, (sp / 10000) * 100)}%`;
+  if (fhBarEl) fhBarEl.style.width = `${Math.min(100, (sp / shipCtl.maxSpeed) * 100)}%`;
   if (fhThrottleEl) {
-    const t = shipCtl.throttle, tgt = shipCtl.THROTTLE_SPEEDS[t + 2];
-    fhThrottleEl.textContent = `режим ${t > 0 ? `+${t}` : t} · ${tgt} ед/с`;
-    fhThrottleEl.classList.toggle('rev', t < 0);
+    const pct = Math.round(shipCtl.throttle * 100);
+    fhThrottleEl.textContent = `ТЯГА ${pct > 0 ? `+${pct}` : pct}%${shipCtl.boosting ? ' ⚡' : ''}`;
+    fhThrottleEl.classList.toggle('rev', shipCtl.throttle < 0);
   }
   if (fhCreditsEl) fhCreditsEl.textContent = state.credits;
   if (fhWarpEl) {
@@ -2082,9 +2082,6 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyG' && state.shipMode) { e.preventDefault(); toggleOrbit(); return; }
   if (e.code === 'KeyC' && state.shipMode) { e.preventDefault(); engageWarp(); return; }
   if (e.code === 'KeyX' && state.shipMode) { e.preventDefault(); doLanding(); return; }
-  // тяга: Shift +1 режим, Ctrl −1 (по одному шагу за нажатие, без автоповтора)
-  if (state.shipMode && !e.repeat && (e.code === 'ShiftLeft' || e.code === 'ShiftRight')) { e.preventDefault(); shipCtl.stepThrottle(1); return; }
-  if (state.shipMode && !e.repeat && (e.code === 'ControlLeft' || e.code === 'ControlRight')) { e.preventDefault(); shipCtl.stepThrottle(-1); return; }
   if (e.code === 'Escape') { deselect(); helpModal.classList.remove('open'); return; }
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight'].includes(e.code)) {
     keys.add(e.code);

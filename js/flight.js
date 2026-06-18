@@ -109,17 +109,21 @@ export class ShipControls {
     this.vel = new THREE.Vector3();
     this.boosting = false;
 
-    // ── управление: throttle-круиз + руль с клавиш + free-look камера ──
-    // (можно крутить вживую через window.__app.shipCtl)
-    this.THROTTLE_SPEEDS = [-1000, -500, 0, 500, 2500, 10000]; // ед/с по индексу −2..3
-    this.throttle = 0;        // индекс −2..3 (0 = стоп); speed = THROTTLE_SPEEDS[throttle+2]
+    // ── управление в стиле No Man's Sky (можно крутить через window.__app.shipCtl) ──
+    // Мышь — руль (тангаж/рыскание), A/D — крен, W/S — аналоговый газ, Shift — буст,
+    // удержание Space — обзор (free-look). Газ-«круиз» без инерции: движок держит скорость.
+    this.maxSpeed = 10000;    // ед/с при полном газе (масштабируется приповерхностно)
+    this.throttle = 0;        // аналоговый газ −1..1 (доля maxSpeed; <0 — реверс)
+    this.throttleRate = 0.7;  // как быстро W/S меняют газ (доля/с)
+    this.boostMult = 2.5;     // множитель скорости на бусте (Shift)
     this.engineAccel = 6000;  // ед/с² — как быстро движок выходит на заданную скорость
-    this.pitchRate = 0.9;     // рад/с тангажа (W нос вниз / S нос вверх)
-    this.yawRate = 0.9;       // рад/с рыскания (A влево / D вправо)
-    // free-look: мышь крутит камеру вокруг корабля (это не руль)
+    this.mouseSens = 0.0018;  // чувствительность руля (мышь)
+    this.maxTurn = 0.06;      // макс. поворот за кадр (рад) — гасит глитч-рывки дельт мыши
+    this.rollRate = 1.6;      // рад/с крена (A/D)
+    // обзор (free-look по удержанию Space): мышь крутит камеру вокруг корабля
     this.lookYaw = 0; this.lookPitch = 0;
     this.lookSens = 0.0022;   // чувствительность обзора
-    this.lookReturn = 0.05;   // возврат камеры за корму при простое мыши (меньше = быстрее)
+    this.lookReturn = 0.05;   // возврат камеры за корму при отпускании (меньше = быстрее)
     this.fovBase = opts.fovBase || camera.fov;
     this.camBack = 7.6;       // отступ камеры назад (масштабируется под корабль)
     this.camUp = 2.1;         // отступ камеры вверх
@@ -218,13 +222,6 @@ export class ShipControls {
     this.warp = null; this.orbit = null;
   }
 
-  // шаг режима тяги (Shift/Ctrl): −2..3. Ручная тяга выводит из орбиты; на поверхности — взлёт.
-  stepThrottle(d) {
-    if (this.landed) { this._takeoff(); return; }
-    this.throttle = THREE.MathUtils.clamp(this.throttle + d, -2, 3);
-    this.orbit = null;
-  }
-
   _requestLock() {
     // unadjustedMovement отключает ускорение мыши ОС — главный источник «диких» дельт
     try {
@@ -312,7 +309,7 @@ export class ShipControls {
     this._dq.setFromUnitVectors(this._tmp, this.landNormal);
     this.quat.premultiply(this._dq).normalize();
     this.vel.copy(this.landNormal).multiplyScalar(60);
-    this.throttle = 1;
+    this.throttle = 0.15;   // мягкий набор высоты
   }
 
   _desiredCam(out) {
@@ -390,25 +387,38 @@ export class ShipControls {
     if (!this.enabled) return;
     const k = this.keys;
 
-    // ── free-look: мышь крутит камеру вокруг корабля (это не руль) ──
-    this.lookYaw -= this.mouseDX * this.lookSens;
-    this.lookPitch -= this.mouseDY * this.lookSens;
-    const hadMouse = this.mouseDX !== 0 || this.mouseDY !== 0;
+    // ── ввод (NMS): мышь = руль / обзор по Space; A/D = крен; W/S = аналоговый газ ──
+    const freeLook = k.has('Space');
+    let yaw = 0, pitch = 0, roll = 0;
+    if (freeLook) {
+      // обзор: мышь крутит камеру вокруг корабля (руль не трогаем)
+      this.lookYaw -= this.mouseDX * this.lookSens;
+      this.lookPitch -= this.mouseDY * this.lookSens;
+      this.lookPitch = THREE.MathUtils.clamp(this.lookPitch, -1.15, 1.15);
+      this.lookYaw = THREE.MathUtils.clamp(this.lookYaw, -2.7, 2.7);
+    } else {
+      // руль мышью; клэмп за кадр гасит глитч-рывки дельт мыши
+      yaw = THREE.MathUtils.clamp(-this.mouseDX * this.mouseSens, -this.maxTurn, this.maxTurn);
+      pitch = THREE.MathUtils.clamp(-this.mouseDY * this.mouseSens, -this.maxTurn, this.maxTurn);
+      const f = Math.pow(this.lookReturn, dt);          // взгляд возвращается за корму
+      this.lookYaw *= f; this.lookPitch *= f;
+    }
     this.mouseDX = 0; this.mouseDY = 0;
-    this.lookPitch = THREE.MathUtils.clamp(this.lookPitch, -1.15, 1.15);
-    this.lookYaw = THREE.MathUtils.clamp(this.lookYaw, -2.7, 2.7);
-    if (!hadMouse) { const f = Math.pow(this.lookReturn, dt); this.lookYaw *= f; this.lookPitch *= f; }
+    if (k.has('KeyA')) roll += this.rollRate * dt;       // крен влево
+    if (k.has('KeyD')) roll -= this.rollRate * dt;       // крен вправо
 
-    // ── руль (клавиши): тангаж W/S, рыскание A/D. Ручное вмешательство → выход из автопилота ──
-    const steering = k.has('KeyW') || k.has('KeyS') || k.has('KeyA') || k.has('KeyD');
-    if ((this.warp || this.orbit) && steering) { this.warp = null; this.orbit = null; }
-    if (!this.warp && !this.orbit && steering) {
-      let pitch = 0, yaw = 0;
-      if (k.has('KeyS')) pitch += this.pitchRate * dt;   // на себя → нос вверх
-      if (k.has('KeyW')) pitch -= this.pitchRate * dt;   // от себя → нос вниз
-      if (k.has('KeyA')) yaw += this.yawRate * dt;       // влево
-      if (k.has('KeyD')) yaw -= this.yawRate * dt;       // вправо
-      this._euler.set(pitch, yaw, 0, 'XYZ');
+    // газ: на поверхности W — взлёт; иначе W прибавляет / S убавляет (держится при отпускании)
+    if (this.landed) {
+      if (k.has('KeyW')) this._takeoff();
+    } else {
+      if (k.has('KeyW')) this.throttle = Math.min(1, this.throttle + this.throttleRate * dt);
+      if (k.has('KeyS')) this.throttle = Math.max(-1, this.throttle - this.throttleRate * dt);
+    }
+    // ручное вмешательство (руль/газ) выводит из варпа/орбиты
+    const manual = yaw || pitch || roll || k.has('KeyW') || k.has('KeyS');
+    if ((this.warp || this.orbit) && manual) { this.warp = null; this.orbit = null; }
+    if (!this.warp && !this.orbit && !this.landed && (yaw || pitch || roll)) {
+      this._euler.set(pitch, yaw, roll, 'XYZ');
       this._dq.setFromEuler(this._euler);
       this.quat.multiply(this._dq).normalize();
     }
@@ -430,7 +440,8 @@ export class ShipControls {
       // throttle-круиз: движок выводит скорость на forward×target; инерции/дрейфа нет,
       // но гравитация колодца перетягивает (на throttle 0 у планеты медленно сваливаешься).
       this._fwd.set(0, 0, -1).applyQuaternion(this.quat);
-      let target = this.THROTTLE_SPEEDS[this.throttle + 2];
+      this.boosting = k.has('ShiftLeft') || k.has('ShiftRight');
+      let target = this.throttle * this.maxSpeed * (this.boosting ? this.boostMult : 1);
       // приповерхностный режим: у поверхности скорость авто-снижается (точный подлёт/посадка)
       this.altAGL = Infinity; this.speedScale = 1;
       if (this.groundRadius > 0) {
@@ -471,7 +482,7 @@ export class ShipControls {
       this.ship.position.copy(this.pos);
       this.ship.quaternion.copy(this.quat);
       const glows = this.ship.userData.glows || [];
-      const intensity = this.warp ? 1.4 : (0.3 + 0.4 * Math.max(0, this.throttle)); // 0..1.5
+      const intensity = this.warp ? 1.5 : (0.25 + 0.9 * Math.max(0, this.throttle)) * (this.boosting ? 1.5 : 1);
       for (const gl of glows) {
         gl.material.opacity = 0.22 + 0.5 * Math.min(1.4, intensity);
         gl.scale.setScalar((gl.position.x === 0 ? 0.95 : 0.7) * (0.7 + 0.55 * Math.min(1.4, intensity)));
@@ -493,7 +504,7 @@ export class ShipControls {
 
     // FOV-рывок на высокой тяге / варпе
     const targetFov = this.warp ? this.fovBase + 20
-      : this.fovBase + (this.throttle >= 2 ? (this.throttle === 3 ? 16 : 8) : 0);
+      : this.fovBase + (this.boosting ? 16 : Math.max(0, this.throttle) * 8);
     this.camera.fov += (targetFov - this.camera.fov) * (1 - Math.pow(0.02, dt));
     this.camera.updateProjectionMatrix();
   }
