@@ -1259,7 +1259,7 @@ scene.add(selRing);
 // ───────────────────────── состояние симуляции ─────────────────────────
 const state = {
   simDays: 0,
-  speed: 1 / 24,        // суток в секунду (по умолчанию: 1 час/с)
+  speed: 1 / 1440,      // суток в секунду (дефолт: 1 игр. день = 24 реальных минуты)
   paused: false,
   selected: null,
   follow: null,
@@ -1755,7 +1755,7 @@ function setSpeed(dps, fromSlider) {
   state.speed = dps;
   speedLabel.textContent = `1 с = ${fmtSpeed(dps)}`;
   if (!fromSlider) {
-    speedSlider.value = ((Math.log10(dps) + 2.5) / 5.5 * 1000).toFixed(0);
+    speedSlider.value = ((Math.log10(dps) + 3.3) / 6 * 1000).toFixed(0);
   }
   document.querySelectorAll('.preset').forEach((b) => {
     b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - dps) / dps < 0.01);
@@ -1763,7 +1763,7 @@ function setSpeed(dps, fromSlider) {
 }
 speedSlider.addEventListener('input', () => {
   const t = parseFloat(speedSlider.value) / 1000;
-  setSpeed(10 ** (t * 5.5 - 2.5), true);
+  setSpeed(10 ** (t * 6 - 3.3), true);
 });
 document.querySelectorAll('.preset').forEach((b) => {
   b.addEventListener('click', () => setSpeed(parseFloat(b.dataset.speed)));
@@ -1776,7 +1776,7 @@ function setPaused(p) {
   btnPause.title = p ? 'Продолжить (пробел)' : 'Пауза (пробел)';
 }
 btnPause.addEventListener('click', () => setPaused(!state.paused));
-setSpeed(1 / 24);
+setSpeed(1 / 1440); // 1 игровой день = 24 реальных минуты (дневной цикл Земли)
 setPaused(false);
 
 function updateSimDate() {
@@ -1868,7 +1868,7 @@ function updateFlightHud() {
   if (fhAltEl) {
     // высотомер: виден при подлёте к поверхности (в обычном полёте, не на орбите/варпе)
     const showAlt = !shipCtl.landed && !shipCtl.orbit && !shipCtl.warp
-      && shipCtl.groundRadius > 0 && shipCtl.altAGL < shipCtl.groundRadius * shipCtl.nearAltFrac;
+      && shipCtl.groundRadius > 0 && shipCtl.speedScale < 0.92;
     if (showAlt) {
       const sc = shipCtl.speedScale;
       fhAltEl.style.display = '';
@@ -2179,9 +2179,11 @@ function animate() {
       const gb = bodies.get(groundId);
       shipCtl.groundCenter.set(gb.wpos.x, gb.wpos.y, gb.wpos.z);
       shipCtl.groundRadius = gb.data.radius;
+      shipCtl.groundSOI = GRAV.soi * gb.data.radius;   // зона авто-замедления подлёта
       shipCtl.groundBodyId = groundId;
     } else {
       shipCtl.groundRadius = 0;
+      shipCtl.groundSOI = 0;
       shipCtl.groundBodyId = null;
     }
     shipCtl.update(dt);

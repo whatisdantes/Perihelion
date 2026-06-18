@@ -124,6 +124,8 @@ export class ShipControls {
     this.lookYaw = 0; this.lookPitch = 0;
     this.lookSens = 0.0022;   // чувствительность обзора
     this.lookReturn = 0.05;   // возврат камеры за корму при отпускании (меньше = быстрее)
+    this.turnSmooth = 0.05;   // плавность/грация руля (рейты плавно входят и гаснут; >0.1 плавнее)
+    this.smoothYaw = 0; this.smoothPitch = 0; this.smoothRoll = 0;
     this.fovBase = opts.fovBase || camera.fov;
     this.camBack = 7.6;       // отступ камеры назад (масштабируется под корабль)
     this.camUp = 2.1;         // отступ камеры вверх
@@ -162,6 +164,7 @@ export class ShipControls {
     // Землю (центр+радиус тела колодца) задаёт main.js каждый кадр.
     this.groundCenter = new THREE.Vector3();
     this.groundRadius = 0;          // радиус тела-земли (ед.); 0 = земли нет
+    this.groundSOI = 0;             // радиус сферы влияния тела (для авто-замедления подлёта)
     this.groundBodyId = null;
     this.landed = null;             // bodyId, когда на поверхности
     this.landNormal = new THREE.Vector3();
@@ -414,11 +417,18 @@ export class ShipControls {
       if (k.has('KeyW')) this.throttle = Math.min(1, this.throttle + this.throttleRate * dt);
       if (k.has('KeyS')) this.throttle = Math.max(-1, this.throttle - this.throttleRate * dt);
     }
-    // ручное вмешательство (руль/газ) выводит из варпа/орбиты
-    const manual = yaw || pitch || roll || k.has('KeyW') || k.has('KeyS');
-    if ((this.warp || this.orbit) && manual) { this.warp = null; this.orbit = null; }
-    if (!this.warp && !this.orbit && !this.landed && (yaw || pitch || roll)) {
-      this._euler.set(pitch, yaw, roll, 'XYZ');
+    // ручное вмешательство КЛАВИШАМИ выводит из автопилота (мышь не сбрасывает варп)
+    const manualKeys = k.has('KeyW') || k.has('KeyS') || k.has('KeyA') || k.has('KeyD');
+    if ((this.warp || this.orbit) && manualKeys) { this.warp = null; this.orbit = null; }
+    // в автопилоте/на посадке цель руля = 0 (плавно гаснет)
+    if (this.warp || this.orbit || this.landed) { yaw = 0; pitch = 0; roll = 0; }
+    // плавный руль: рейты разворота плавно входят и гаснут → грация/инерция
+    const s = 1 - Math.pow(this.turnSmooth, dt);
+    this.smoothYaw += (yaw - this.smoothYaw) * s;
+    this.smoothPitch += (pitch - this.smoothPitch) * s;
+    this.smoothRoll += (roll - this.smoothRoll) * s;
+    if (!this.warp && !this.orbit && !this.landed) {
+      this._euler.set(this.smoothPitch, this.smoothYaw, this.smoothRoll, 'XYZ');
       this._dq.setFromEuler(this._euler);
       this.quat.multiply(this._dq).normalize();
     }
@@ -442,12 +452,15 @@ export class ShipControls {
       this._fwd.set(0, 0, -1).applyQuaternion(this.quat);
       this.boosting = k.has('ShiftLeft') || k.has('ShiftRight');
       let target = this.throttle * this.maxSpeed * (this.boosting ? this.boostMult : 1);
-      // приповерхностный режим: у поверхности скорость авто-снижается (точный подлёт/посадка)
+      // авто-замедление по всей сфере влияния (Elite-supercruise): у границы SOI — полная
+      // скорость, у поверхности — minSpeedScale. sqrt-кривая держит скорость высоко и душит
+      // у грунта → к планете не подлетишь на полном газу и не перелетишь её.
       this.altAGL = Infinity; this.speedScale = 1;
       if (this.groundRadius > 0) {
         const c = this.groundCenter;
         this.altAGL = Math.hypot(this.wpos.x - c.x, this.wpos.y - c.y, this.wpos.z - c.z) - this.groundRadius;
-        this.speedScale = THREE.MathUtils.clamp(this.altAGL / (this.groundRadius * this.nearAltFrac), this.minSpeedScale, 1);
+        const zone = Math.max(1e-6, (this.groundSOI || this.groundRadius * 14) - this.groundRadius);
+        this.speedScale = THREE.MathUtils.clamp(Math.sqrt(Math.max(0, this.altAGL) / zone), this.minSpeedScale, 1);
         target *= this.speedScale;
       }
       this._tmp.copy(this._fwd).multiplyScalar(target).sub(this.vel); // Δ к желаемой скорости
