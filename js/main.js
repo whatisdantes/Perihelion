@@ -1842,6 +1842,7 @@ const fhTotalEl = document.getElementById('fhTotal');
 const fhCreditsEl = document.getElementById('fhCredits');
 const fhWellEl = document.getElementById('fhWell');
 const fhWarpEl = document.getElementById('fhWarp');
+const fhAltEl = document.getElementById('fhAlt');
 function updateFlightHud() {
   const sp = shipCtl.getSpeed();
   if (fhSpeedEl) fhSpeedEl.textContent = Math.round(sp);
@@ -1862,6 +1863,19 @@ function updateFlightHud() {
       fhWarpEl.textContent = 'ВАРП: наведись на объект и жми C';
     } else {
       fhWarpEl.style.display = 'none';
+    }
+  }
+  if (fhAltEl) {
+    // высотомер: виден при подлёте к поверхности (в обычном полёте, не на орбите/варпе)
+    const showAlt = !shipCtl.landed && !shipCtl.orbit && !shipCtl.warp
+      && shipCtl.groundRadius > 0 && shipCtl.altAGL < shipCtl.groundRadius * shipCtl.nearAltFrac;
+    if (showAlt) {
+      const sc = shipCtl.speedScale;
+      fhAltEl.style.display = '';
+      fhAltEl.innerHTML = `ВЫСОТА: <b>${fmtDist(Math.max(0, shipCtl.altAGL))}</b>`
+        + (sc < 0.9 ? ` · ближний режим ×${sc.toFixed(2)}` : '');
+    } else {
+      fhAltEl.style.display = 'none';
     }
   }
   if (fhWellEl) {

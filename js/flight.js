@@ -164,6 +164,11 @@ export class ShipControls {
     this.landClearance = 0.2;       // зазор над поверхностью (масштабируется под корабль)
     this.LAND_SPEED = 600;          // макс. скорость для посадки (ед/с)
     this.landAltFrac = 0.25;        // макс. высота посадки = groundRadius × это
+    // приповерхностный режим: у поверхности тяга авто-снижается (точный подлёт/посадка)
+    this.nearAltFrac = 0.8;         // замедление при AGL < groundRadius × это
+    this.minSpeedScale = 0.008;     // мин. множитель скорости у самой поверхности
+    this.altAGL = Infinity;         // высота над поверхностью (ед.) — для HUD
+    this.speedScale = 1;            // текущий множитель скорости
 
     this._justLocked = false;
     this._onKeyDown = (e) => {
@@ -425,7 +430,15 @@ export class ShipControls {
       // throttle-круиз: движок выводит скорость на forward×target; инерции/дрейфа нет,
       // но гравитация колодца перетягивает (на throttle 0 у планеты медленно сваливаешься).
       this._fwd.set(0, 0, -1).applyQuaternion(this.quat);
-      const target = this.THROTTLE_SPEEDS[this.throttle + 2];
+      let target = this.THROTTLE_SPEEDS[this.throttle + 2];
+      // приповерхностный режим: у поверхности скорость авто-снижается (точный подлёт/посадка)
+      this.altAGL = Infinity; this.speedScale = 1;
+      if (this.groundRadius > 0) {
+        const c = this.groundCenter;
+        this.altAGL = Math.hypot(this.wpos.x - c.x, this.wpos.y - c.y, this.wpos.z - c.z) - this.groundRadius;
+        this.speedScale = THREE.MathUtils.clamp(this.altAGL / (this.groundRadius * this.nearAltFrac), this.minSpeedScale, 1);
+        target *= this.speedScale;
+      }
       this._tmp.copy(this._fwd).multiplyScalar(target).sub(this.vel); // Δ к желаемой скорости
       const maxStep = this.engineAccel * dt;
       if (this._tmp.lengthSq() > maxStep * maxStep) this._tmp.setLength(maxStep);
