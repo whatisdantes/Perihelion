@@ -154,6 +154,16 @@ export class ShipControls {
     // экспоненциальный подлёт и торможение, выход в сублайт у границы воронки.
     this.warp = null;
     this.warpCenter = new THREE.Vector3();
+    // посадка (этап 13): коллизия со сферой + «приклеивание» к поверхности.
+    // Землю (центр+радиус тела колодца) задаёт main.js каждый кадр.
+    this.groundCenter = new THREE.Vector3();
+    this.groundRadius = 0;          // радиус тела-земли (ед.); 0 = земли нет
+    this.groundBodyId = null;
+    this.landed = null;             // bodyId, когда на поверхности
+    this.landNormal = new THREE.Vector3();
+    this.landClearance = 0.2;       // зазор над поверхностью (масштабируется под корабль)
+    this.LAND_SPEED = 600;          // макс. скорость для посадки (ед/с)
+    this.landAltFrac = 0.25;        // макс. высота посадки = groundRadius × это
 
     this._justLocked = false;
     this._onKeyDown = (e) => {
@@ -203,8 +213,9 @@ export class ShipControls {
     this.warp = null; this.orbit = null;
   }
 
-  // шаг режима тяги (Shift/Ctrl): −2..3. Ручная тяга выводит из орбиты.
+  // шаг режима тяги (Shift/Ctrl): −2..3. Ручная тяга выводит из орбиты; на поверхности — взлёт.
   stepThrottle(d) {
+    if (this.landed) { this._takeoff(); return; }
     this.throttle = THREE.MathUtils.clamp(this.throttle + d, -2, 3);
     this.orbit = null;
   }
@@ -256,6 +267,47 @@ export class ShipControls {
     this.camUp = lenU * 1.5;
     this.camLead = lenU * 4.2;
     this.spawnOffset = lenU * 7;
+    this.landClearance = lenU * 1.5;   // корабль садится брюхом чуть над поверхностью
+  }
+
+  // X: посадка рядом с поверхностью на малой скорости / взлёт, если уже сели
+  tryLandOrTakeoff() {
+    if (this.landed) { this._takeoff(); return 'takeoff'; }
+    if (this.groundRadius <= 0) return 'no-ground';
+    const c = this.groundCenter;
+    const r = Math.hypot(this.wpos.x - c.x, this.wpos.y - c.y, this.wpos.z - c.z);
+    if (r - this.groundRadius > this.groundRadius * this.landAltFrac) return 'too-high';
+    if (this.vel.length() > this.LAND_SPEED) return 'too-fast';
+    this._land();
+    return 'landed';
+  }
+
+  _land() {
+    const c = this.groundCenter;
+    this._oRel.set(this.wpos.x - c.x, this.wpos.y - c.y, this.wpos.z - c.z);
+    const r = this._oRel.length() || 1;
+    this.landNormal.copy(this._oRel).divideScalar(r);
+    const surf = this.groundRadius + this.landClearance;
+    this.wpos.x = c.x + this.landNormal.x * surf;
+    this.wpos.y = c.y + this.landNormal.y * surf;
+    this.wpos.z = c.z + this.landNormal.z * surf;
+    this.vel.set(0, 0, 0);
+    this.throttle = 0; this.warp = null; this.orbit = null;
+    this.landed = this.groundBodyId;
+    // ориентация: «верх» корабля (+Y) по нормали — брюхом к планете
+    this._tmp.set(0, 1, 0).applyQuaternion(this.quat);
+    this._dq.setFromUnitVectors(this._tmp, this.landNormal);
+    this.quat.premultiply(this._dq).normalize();
+  }
+
+  _takeoff() {
+    this.landed = null;
+    // нос — по нормали (вверх), толчок от поверхности, тяга вперёд
+    this._tmp.set(0, 0, -1).applyQuaternion(this.quat);
+    this._dq.setFromUnitVectors(this._tmp, this.landNormal);
+    this.quat.premultiply(this._dq).normalize();
+    this.vel.copy(this.landNormal).multiplyScalar(60);
+    this.throttle = 1;
   }
 
   _desiredCam(out) {
@@ -358,7 +410,14 @@ export class ShipControls {
 
     // ── движение ──
     this.warpSpeed = 0;
-    if (this.warp) {
+    if (this.landed) {
+      // приклеены к поверхности — следуем за телом (его орбитой), без движения
+      const c = this.groundCenter, surf = this.groundRadius + this.landClearance;
+      this.wpos.x = c.x + this.landNormal.x * surf;
+      this.wpos.y = c.y + this.landNormal.y * surf;
+      this.wpos.z = c.z + this.landNormal.z * surf;
+      this.vel.set(0, 0, 0);
+    } else if (this.warp) {
       this.warpSpeed = this._updateWarp(dt);
     } else if (this.orbit) {
       this._updateOrbit(dt);
@@ -378,6 +437,19 @@ export class ShipControls {
       this.wpos.x += this.vel.x * dt;
       this.wpos.y += this.vel.y * dt;
       this.wpos.z += this.vel.z * dt;
+      // ── коллизия с поверхностью: не проваливаемся сквозь сферу, скользим по ней ──
+      if (this.groundRadius > 0) {
+        const c = this.groundCenter;
+        let dx = this.wpos.x - c.x, dy = this.wpos.y - c.y, dz = this.wpos.z - c.z;
+        const r = Math.hypot(dx, dy, dz) || 1;
+        const surf = this.groundRadius + this.landClearance;
+        if (r < surf) {
+          dx /= r; dy /= r; dz /= r;                                  // нормаль «вверх»
+          this.wpos.x = c.x + dx * surf; this.wpos.y = c.y + dy * surf; this.wpos.z = c.z + dz * surf;
+          const vr = this.vel.x * dx + this.vel.y * dy + this.vel.z * dz; // радиальная (<0 — вниз)
+          if (vr < 0) { this.vel.x -= dx * vr; this.vel.y -= dy * vr; this.vel.z -= dz * vr; }
+        }
+      }
     }
     this.pos.set(0, 0, 0);
 

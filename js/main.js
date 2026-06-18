@@ -1228,6 +1228,19 @@ function engageWarp() {
   shipCtl.warp = { bodyId: id, arrivalDist, rate: WARP.rate, dist };
 }
 
+// X: посадка на поверхность тела колодца / взлёт (этап 13 — гладкая сфера)
+function doLanding() {
+  if (!state.shipMode) return;
+  const msg = {
+    landed: 'Посадка выполнена',
+    takeoff: 'Взлёт',
+    'too-high': 'Слишком высоко — снизьтесь к поверхности',
+    'too-fast': 'Слишком быстро — сбросьте скорость (Ctrl)',
+    'no-ground': 'Нет планеты рядом для посадки',
+  }[shipCtl.tryLandOrTakeoff()];
+  if (msg) flightBanner(msg);
+}
+
 // КВМ-пул: выбросы стартуют от поверхности Солнца → радиус эмиттера = реальный SUN_R
 const cmePool = [new CMEBurst(SUN_R), new CMEBurst(SUN_R), new CMEBurst(SUN_R)];
 for (const c of cmePool) bodies.get('sun').group.add(c.points);
@@ -1852,7 +1865,12 @@ function updateFlightHud() {
     }
   }
   if (fhWellEl) {
-    if (shipCtl.orbit) {
+    if (shipCtl.landed) {
+      const b = bodies.get(shipCtl.landed);
+      fhWellEl.style.display = '';
+      fhWellEl.classList.add('orbiting');
+      fhWellEl.innerHTML = `<b>НА ПОВЕРХНОСТИ</b> · ${b.data.name} · <kbd>X</kbd> взлёт`;
+    } else if (shipCtl.orbit) {
       const b = bodies.get(shipCtl.orbit.bodyId);
       const alt = shipCtl.orbit.r - b.data.radius;
       fhWellEl.style.display = '';
@@ -2049,7 +2067,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR' && state.shipMode) { e.preventDefault(); startScan(); return; }
   if (e.code === 'KeyG' && state.shipMode) { e.preventDefault(); toggleOrbit(); return; }
   if (e.code === 'KeyC' && state.shipMode) { e.preventDefault(); engageWarp(); return; }
-  if (e.code === 'KeyX' && state.shipMode) { e.preventDefault(); flightBanner('Посадка — этап 13 (скоро)'); return; }
+  if (e.code === 'KeyX' && state.shipMode) { e.preventDefault(); doLanding(); return; }
   // тяга: Shift +1 режим, Ctrl −1 (по одному шагу за нажатие, без автоповтора)
   if (state.shipMode && !e.repeat && (e.code === 'ShiftLeft' || e.code === 'ShiftRight')) { e.preventDefault(); shipCtl.stepThrottle(1); return; }
   if (state.shipMode && !e.repeat && (e.code === 'ControlLeft' || e.code === 'ControlRight')) { e.preventDefault(); shipCtl.stepThrottle(-1); return; }
@@ -2143,6 +2161,17 @@ function animate() {
     if (shipCtl.warp) {
       const w = bodies.get(shipCtl.warp.bodyId).wpos;
       shipCtl.warpCenter.set(w.x, w.y, w.z);
+    }
+    // земля для коллизии/посадки = тело, на котором сидим, или тело текущего колодца
+    const groundId = shipCtl.landed || (currentWell && currentWell.id);
+    if (groundId) {
+      const gb = bodies.get(groundId);
+      shipCtl.groundCenter.set(gb.wpos.x, gb.wpos.y, gb.wpos.z);
+      shipCtl.groundRadius = gb.data.radius;
+      shipCtl.groundBodyId = groundId;
+    } else {
+      shipCtl.groundRadius = 0;
+      shipCtl.groundBodyId = null;
     }
     shipCtl.update(dt);
     origin.x = shipCtl.wpos.x; origin.y = shipCtl.wpos.y; origin.z = shipCtl.wpos.z;
